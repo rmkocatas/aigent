@@ -19,6 +19,7 @@ import type {
   LlmProviderConfig,
 } from '../../types/index.js';
 import { detectEnvironment } from '../../core/detect/environment.js';
+import { ensureOllamaReady } from '../../core/detect/ollama.js';
 import { getDefaults } from '../../core/config/defaults.js';
 import { generateOpenClawConfig } from '../../core/config/generator.js';
 import { generateSecrets } from '../../core/security/token-generator.js';
@@ -73,6 +74,7 @@ export function createInitCommand(): Command {
     .option('--api-key <key>', 'LLM API key (skip interactive prompt)')
     .option('--provider <provider>', 'LLM provider: ollama, anthropic, openai, gemini, openrouter')
     .option('--ollama-model <model>', 'Ollama model name (e.g. llama3.3)')
+    .option('--model <model>', 'Cloud model ID (e.g. claude-opus-4-6, gpt-4o)')
     .option('--platforms <list>', 'Comma-separated channel list (e.g. telegram,discord)')
     .option('--security <level>', 'Security level: L1, L2, or L3', 'L2')
     .option('--port <number>', 'Gateway port', '18789')
@@ -100,6 +102,7 @@ interface InitOptions {
   apiKey?: string;
   provider?: string;
   ollamaModel?: string;
+  model?: string;
   platforms?: string;
   security: string;
   port: string;
@@ -130,17 +133,43 @@ async function runInit(opts: InitOptions): Promise<void> {
   let llmConfig: LlmProviderConfig;
 
   if (opts.provider === 'ollama') {
-    // --provider ollama: skip API key entirely
+    // --provider ollama: ensure Ollama + model are available
+    const ollamaSpinner = quiet ? null : ora('Setting up Ollama...').start();
+    const ollamaResult = await ensureOllamaReady(
+      opts.ollamaModel,
+      env.availableMemoryMB,
+      (msg) => { if (ollamaSpinner) ollamaSpinner.text = msg; },
+    );
+
+    if (!ollamaResult.ready) {
+      ollamaSpinner?.fail(ollamaResult.error ?? 'Failed to set up Ollama');
+      throw new Error(ollamaResult.error ?? 'Could not set up Ollama');
+    }
+
+    ollamaSpinner?.succeed(`Ollama ready — model: ${ollamaResult.model}`);
     llmConfig = {
       provider: 'ollama',
       apiKey: '',
       ollama: {
         baseUrl: 'http://127.0.0.1:11434',
-        model: opts.ollamaModel ?? 'llama3.3',
+        model: ollamaResult.model,
       },
     };
   } else if (opts.provider === 'hybrid') {
-    // --provider hybrid: Ollama for simple tasks, cloud for complex
+    // --provider hybrid: ensure Ollama + model, then configure cloud fallback
+    const ollamaSpinner = quiet ? null : ora('Setting up Ollama...').start();
+    const ollamaResult = await ensureOllamaReady(
+      opts.ollamaModel,
+      env.availableMemoryMB,
+      (msg) => { if (ollamaSpinner) ollamaSpinner.text = msg; },
+    );
+
+    if (!ollamaResult.ready) {
+      ollamaSpinner?.fail(ollamaResult.error ?? 'Failed to set up Ollama');
+      throw new Error(ollamaResult.error ?? 'Could not set up Ollama');
+    }
+
+    ollamaSpinner?.succeed(`Ollama ready — model: ${ollamaResult.model}`);
     const cloudApiKey = opts.apiKey ?? '';
     const { validateApiKey } = await import('../../core/config/validator.js');
     const result = validateApiKey(cloudApiKey);
@@ -150,14 +179,14 @@ async function runInit(opts: InitOptions): Promise<void> {
       apiKey: cloudApiKey,
       ollama: {
         baseUrl: 'http://127.0.0.1:11434',
-        model: opts.ollamaModel ?? 'llama3.3',
+        model: ollamaResult.model,
       },
       routing: {
         mode: 'hybrid',
         primary: 'ollama',
         fallback: cloudProvider,
         rules: [
-          { condition: 'simple', provider: 'ollama', model: opts.ollamaModel ?? 'llama3.3' },
+          { condition: 'simple', provider: 'ollama', model: ollamaResult.model },
           { condition: 'complex', provider: cloudProvider },
           { condition: 'coding', provider: cloudProvider },
           { condition: 'default', provider: 'ollama' },
@@ -169,7 +198,7 @@ async function runInit(opts: InitOptions): Promise<void> {
     const { validateApiKey } = await import('../../core/config/validator.js');
     const result = validateApiKey(opts.apiKey);
     const provider = (opts.provider as LlmProvider) ?? result.provider ?? 'openrouter';
-    llmConfig = { provider, apiKey: opts.apiKey };
+    llmConfig = { provider, apiKey: opts.apiKey, model: opts.model };
   } else {
     llmConfig = await promptApiKey(env);
   }

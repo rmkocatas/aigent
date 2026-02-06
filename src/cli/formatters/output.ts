@@ -83,6 +83,9 @@ export function printDeploymentSummary(config: DeploymentConfig): void {
   } else {
     row('LLM Provider', config.llm.provider);
   }
+  if (config.llm.model) {
+    row('Model', config.llm.model);
+  }
   row('Security Level', config.securityLevel);
   row('Mode', config.deployment.mode);
   row('Gateway', `${config.gateway.bind}:${config.gateway.port}`);
