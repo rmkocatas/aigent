@@ -1,6 +1,7 @@
 #!/usr/bin/env node
 import { Command } from 'commander';
 import { createInitCommand } from './cli/commands/init.js';
+import { createTrainCommand } from './cli/commands/train.js';
 
 const program = new Command();
 
@@ -11,6 +12,7 @@ program
 
 // Default command is init
 program.addCommand(createInitCommand(), { isDefault: true });
+program.addCommand(createTrainCommand());
 
 // Stub commands for Phase 2
 program.command('channels').description('Manage messaging platforms (coming soon)');

@@ -201,6 +201,16 @@ function generateOpenClawJson(
     discovery: {
       mdns: levelDef.discovery.mdnsMode,
     },
+    ...(config.training?.enabled ? {
+      training: {
+        enabled: true,
+        dataDir: config.training.dataDir,
+        autoCollect: config.training.autoCollect,
+        minEntries: config.training.minEntriesForTraining,
+        autoTrain: config.training.autoTrain,
+        baseModel: config.training.baseModel,
+      },
+    } : {}),
   };
 
   // Prefix a comment header, then the JSON body.
@@ -244,6 +254,10 @@ function generateDockerCompose(
     `      - ${config.deployment.installDir}/openclaw.json:/app/config/openclaw.json:ro`,
     `      - openclaw-data:/app/data`,
   ];
+
+  if (config.training?.enabled) {
+    lines.push(`      - ${config.training.dataDir}:/app/training`);
+  }
 
   if (levelDef.sandbox.workspaceAccess !== 'none') {
     const roFlag = levelDef.sandbox.workspaceAccess === 'ro' ? ':ro' : '';

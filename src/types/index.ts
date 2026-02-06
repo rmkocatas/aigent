@@ -234,6 +234,7 @@ export interface DeploymentConfig {
     domain?: string;
     email?: string;
   };
+  training?: TrainingConfig;
 }
 
 export interface GeneratedSecrets {
@@ -256,6 +257,61 @@ export interface DeploymentResult {
   errors: string[];
   warnings: string[];
   auditResults: AuditResult[];
+}
+
+// --- Training / Distillation ---
+
+export interface TrainingEntry {
+  id: string;
+  prompt: string;
+  response: string;
+  provider: LlmProvider;
+  model: string;
+  timestamp: string;
+  tokenCount?: number;
+  category?: 'simple' | 'complex' | 'coding' | 'general';
+}
+
+export interface TrainingConfig {
+  enabled: boolean;
+  dataDir: string;
+  autoCollect: boolean;
+  minEntriesForTraining: number;
+  autoTrain: boolean;
+  baseModel: string;
+  loraRank: number;
+  epochs: number;
+}
+
+export interface TrainingStats {
+  totalEntries: number;
+  dataFileSizeMB: number;
+  oldestEntry?: string;
+  newestEntry?: string;
+  readyForTraining: boolean;
+  fineTunedVersions: string[];
+  currentModel: string;
+}
+
+export type TrainingBackend = 'unsloth' | 'mlx' | 'transformers' | 'none';
+
+export interface FineTuneConfig {
+  baseModel: string;
+  dataPath: string;
+  outputDir: string;
+  loraRank: number;
+  epochs: number;
+  batchSize: number;
+  learningRate: number;
+  backend: TrainingBackend;
+}
+
+export interface FineTuneResult {
+  success: boolean;
+  modelName: string;
+  trainingTime: string;
+  dataPointsUsed: number;
+  error?: string;
 }
 
 // --- Security Audit ---

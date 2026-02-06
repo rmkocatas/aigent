@@ -97,6 +97,10 @@ export function printDeploymentSummary(config: DeploymentConfig): void {
     .join(', ');
   row('Channels', enabledChannels || 'none');
 
+  if (config.training?.enabled) {
+    row('Auto-learning', chalk.green('enabled') + ` (trains after ${config.training.minEntriesForTraining} examples)`);
+  }
+
   console.log('');
 }
 

@@ -243,6 +243,27 @@ async function runInit(opts: InitOptions): Promise<void> {
     },
   };
 
+  // 5b. Auto-learning opt-in for hybrid/ollama modes
+  if (llmConfig.routing?.mode === 'hybrid' && !quiet) {
+    const enableTraining = await confirm({
+      message: 'Enable auto-learning? Your local model will improve from cloud responses over time (recommended)',
+      default: true,
+    });
+
+    if (enableTraining) {
+      config.training = {
+        enabled: true,
+        dataDir: '~/.openclaw/training',
+        autoCollect: true,
+        minEntriesForTraining: 500,
+        autoTrain: false,
+        baseModel: llmConfig.ollama?.model ?? 'llama3.1:8b',
+        loraRank: 16,
+        epochs: 3,
+      };
+    }
+  }
+
   if (!quiet) {
     printDeploymentSummary(config);
   }

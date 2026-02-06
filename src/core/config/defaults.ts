@@ -2,7 +2,7 @@
 // OpenClaw Deploy — Hardened Default Configuration
 // ============================================================
 
-import type { DeploymentConfig, LlmProvider, SecurityLevel } from '../../types/index.js';
+import type { DeploymentConfig, LlmProvider, SecurityLevel, TrainingConfig } from '../../types/index.js';
 
 // Fallback security-level gateway binds in case security/levels.js
 // is not yet available. These are replaced at runtime when the
@@ -44,6 +44,19 @@ export function getDefaults(
         model: 'claude-opus-4-6',
       };
 
+  const training: TrainingConfig | undefined = provider === 'ollama'
+    ? {
+        enabled: false,
+        dataDir: '~/.openclaw/training',
+        autoCollect: true,
+        minEntriesForTraining: 500,
+        autoTrain: false,
+        baseModel: llm.ollama?.model ?? 'llama3.1:8b',
+        loraRank: 16,
+        epochs: 3,
+      }
+    : undefined;
+
   return {
     llm,
     channels: [
@@ -59,5 +72,6 @@ export function getDefaults(
       workspace: '~/.openclaw/workspace',
       installDir: '~/.openclaw',
     },
+    ...(training ? { training } : {}),
   };
 }
