@@ -4,11 +4,34 @@
 
 // --- LLM Provider ---
 
-export type LlmProvider = 'anthropic' | 'openai' | 'gemini' | 'openrouter';
+export type LlmProvider = 'anthropic' | 'openai' | 'gemini' | 'openrouter' | 'ollama';
+
+export type ModelRoutingMode = 'single' | 'hybrid';
 
 export interface LlmProviderConfig {
   provider: LlmProvider;
   apiKey: string;
+  model?: string;
+  ollama?: OllamaConfig;
+  routing?: ModelRoutingConfig;
+}
+
+export interface OllamaConfig {
+  baseUrl: string;
+  model: string;
+  keepAlive?: string;
+}
+
+export interface ModelRoutingConfig {
+  mode: ModelRoutingMode;
+  primary: LlmProvider;
+  fallback?: LlmProvider;
+  rules?: RoutingRule[];
+}
+
+export interface RoutingRule {
+  condition: 'simple' | 'complex' | 'coding' | 'default';
+  provider: LlmProvider;
   model?: string;
 }
 
@@ -186,6 +209,9 @@ export interface DetectedEnvironment {
   cpuCount: number;
   isWSL: boolean;
   isTailscaleAvailable: boolean;
+  ollamaAvailable: boolean;
+  ollamaVersion?: string;
+  ollamaModels?: string[];
 }
 
 // --- Deployment ---

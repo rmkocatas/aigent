@@ -29,10 +29,15 @@ export function validateConfig(config: unknown): {
 // API key format detection
 // ---------------------------------------------------------------------------
 
-export function validateApiKey(key: string): {
+export function validateApiKey(key: string, provider?: LlmProvider): {
   valid: boolean;
   provider: LlmProvider | null;
 } {
+  // Ollama does not require an API key
+  if (provider === 'ollama' && (!key || key.trim().length === 0)) {
+    return { valid: true, provider: 'ollama' };
+  }
+
   if (!key || key.trim().length === 0) {
     return { valid: false, provider: null };
   }
@@ -60,4 +65,27 @@ export function validateApiKey(key: string): {
   }
 
   return { valid: false, provider: null };
+}
+
+// ---------------------------------------------------------------------------
+// Ollama connection validation
+// ---------------------------------------------------------------------------
+
+export async function validateOllamaConnection(baseUrl: string): Promise<{
+  valid: boolean;
+  models?: string[];
+  error?: string;
+}> {
+  try {
+    const response = await fetch(`${baseUrl}/api/tags`);
+    if (!response.ok) {
+      return { valid: false, error: `Ollama returned HTTP ${response.status}` };
+    }
+    const data = await response.json() as { models?: Array<{ name: string }> };
+    const models = data.models?.map((m) => m.name) ?? [];
+    return { valid: true, models };
+  } catch (err) {
+    const message = err instanceof Error ? err.message : 'Unknown error';
+    return { valid: false, error: `Cannot connect to Ollama at ${baseUrl}: ${message}` };
+  }
 }

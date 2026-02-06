@@ -9,6 +9,7 @@ import type { DetectedEnvironment } from '../../types/index.js';
 import { detectDocker } from './docker.js';
 import { findFreePort } from './ports.js';
 import { detectExistingInstall } from './existing-install.js';
+import { detectOllama } from './ollama.js';
 
 function exec(command: string, args: string[]): Promise<string> {
   return new Promise((resolve, reject) => {
@@ -79,7 +80,7 @@ async function detectTailscale(): Promise<boolean> {
 
 export async function detectEnvironment(): Promise<DetectedEnvironment> {
   // Run all independent detections in parallel
-  const [docker, freePort, existingInstall, isWSL, hasSystemd, isTailscaleAvailable] =
+  const [docker, freePort, existingInstall, isWSL, hasSystemd, isTailscaleAvailable, ollama] =
     await Promise.all([
       detectDocker().catch(() => ({
         available: false as const,
@@ -91,6 +92,7 @@ export async function detectEnvironment(): Promise<DetectedEnvironment> {
       detectWSL().catch(() => false),
       detectSystemd().catch(() => false),
       detectTailscale().catch(() => false),
+      detectOllama().catch(() => ({ available: false as const })),
     ]);
 
   const os = detectOS();
@@ -113,5 +115,8 @@ export async function detectEnvironment(): Promise<DetectedEnvironment> {
     cpuCount,
     isWSL,
     isTailscaleAvailable,
+    ollamaAvailable: ollama.available,
+    ollamaVersion: 'version' in ollama ? ollama.version : undefined,
+    ollamaModels: 'models' in ollama ? ollama.models : undefined,
   };
 }

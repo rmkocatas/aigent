@@ -39,9 +39,12 @@ services:
       - "\${OPENCLAW_WORKSPACE:-~/.openclaw/workspace}:/home/node/.openclaw/workspace"
     environment:
       OPENCLAW_CONFIG_PATH: /home/node/.openclaw/openclaw.json
-      OPENCLAW_GATEWAY_PORT: "${port}"
+      OPENCLAW_GATEWAY_PORT: "${port}"${config.llm.provider === 'ollama' ? `
+      OLLAMA_HOST: "http://host.docker.internal:11434"` : ''}
     env_file:
-      - .env
+      - .env${config.llm.provider === 'ollama' ? `
+    extra_hosts:
+      - "host.docker.internal:host-gateway"` : ''}
     read_only: ${readOnly}
     cap_drop:
 ${capDrop.map(c => `      - ${c}`).join('\n')}

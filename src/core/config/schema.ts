@@ -7,13 +7,35 @@ import type { DeploymentConfig } from '../../types/index.js';
 
 // --- Atomic Schemas ---
 
-const LlmProviderEnum = z.enum(['anthropic', 'openai', 'gemini', 'openrouter']);
+const LlmProviderEnum = z.enum(['anthropic', 'openai', 'gemini', 'openrouter', 'ollama']);
+
+export const OllamaConfigSchema = z.object({
+  baseUrl: z.string().url().default('http://localhost:11434'),
+  model: z.string(),
+  keepAlive: z.string().optional(),
+});
+
+export const ModelRoutingConfigSchema = z.object({
+  mode: z.enum(['single', 'hybrid']),
+  primary: LlmProviderEnum,
+  fallback: LlmProviderEnum.optional(),
+  rules: z.array(z.object({
+    condition: z.enum(['simple', 'complex', 'coding', 'default']),
+    provider: LlmProviderEnum,
+    model: z.string().optional(),
+  })).optional(),
+});
 
 export const LlmProviderSchema = z.object({
   provider: LlmProviderEnum,
-  apiKey: z.string().min(1, 'API key must not be empty'),
+  apiKey: z.string(),
   model: z.string().optional(),
-});
+  ollama: OllamaConfigSchema.optional(),
+  routing: ModelRoutingConfigSchema.optional(),
+}).refine(
+  (data) => data.provider === 'ollama' || data.apiKey.length > 0,
+  { message: 'API key must not be empty for non-Ollama providers', path: ['apiKey'] },
+);
 
 const GatewayBindEnum = z.enum(['loopback', 'lan', 'tailnet', 'custom']);
 const AuthModeEnum = z.enum(['token']);

@@ -15,6 +15,8 @@ import type {
   DeploymentConfig,
   DeploymentResult,
   GatewayBind,
+  LlmProvider,
+  LlmProviderConfig,
 } from '../../types/index.js';
 import { detectEnvironment } from '../../core/detect/environment.js';
 import { getDefaults } from '../../core/config/defaults.js';
@@ -69,6 +71,8 @@ export function createInitCommand(): Command {
   const cmd = new Command('init')
     .description('Initialize and deploy OpenClaw')
     .option('--api-key <key>', 'LLM API key (skip interactive prompt)')
+    .option('--provider <provider>', 'LLM provider: ollama, anthropic, openai, gemini, openrouter')
+    .option('--ollama-model <model>', 'Ollama model name (e.g. llama3.3)')
     .option('--platforms <list>', 'Comma-separated channel list (e.g. telegram,discord)')
     .option('--security <level>', 'Security level: L1, L2, or L3', 'L2')
     .option('--port <number>', 'Gateway port', '18789')
@@ -94,6 +98,8 @@ export function createInitCommand(): Command {
 
 interface InitOptions {
   apiKey?: string;
+  provider?: string;
+  ollamaModel?: string;
   platforms?: string;
   security: string;
   port: string;
@@ -120,20 +126,52 @@ async function runInit(opts: InitOptions): Promise<void> {
     printDetectedEnv(env);
   }
 
-  // 3. API key
-  let apiKey: string;
-  let provider: DeploymentConfig['llm']['provider'];
+  // 3. LLM provider selection
+  let llmConfig: LlmProviderConfig;
 
-  if (opts.apiKey) {
-    apiKey = opts.apiKey;
-    // Simple detection for CLI-provided keys
+  if (opts.provider === 'ollama') {
+    // --provider ollama: skip API key entirely
+    llmConfig = {
+      provider: 'ollama',
+      apiKey: '',
+      ollama: {
+        baseUrl: 'http://127.0.0.1:11434',
+        model: opts.ollamaModel ?? 'llama3.3',
+      },
+    };
+  } else if (opts.provider === 'hybrid') {
+    // --provider hybrid: Ollama for simple tasks, cloud for complex
+    const cloudApiKey = opts.apiKey ?? '';
     const { validateApiKey } = await import('../../core/config/validator.js');
-    const result = validateApiKey(apiKey);
-    provider = result.provider ?? 'openrouter';
+    const result = validateApiKey(cloudApiKey);
+    const cloudProvider = result.provider ?? 'anthropic';
+    llmConfig = {
+      provider: 'ollama',
+      apiKey: cloudApiKey,
+      ollama: {
+        baseUrl: 'http://127.0.0.1:11434',
+        model: opts.ollamaModel ?? 'llama3.3',
+      },
+      routing: {
+        mode: 'hybrid',
+        primary: 'ollama',
+        fallback: cloudProvider,
+        rules: [
+          { condition: 'simple', provider: 'ollama', model: opts.ollamaModel ?? 'llama3.3' },
+          { condition: 'complex', provider: cloudProvider },
+          { condition: 'coding', provider: cloudProvider },
+          { condition: 'default', provider: 'ollama' },
+        ],
+      },
+    };
+  } else if (opts.apiKey) {
+    // --api-key flag: detect provider from key format
+    const { validateApiKey } = await import('../../core/config/validator.js');
+    const result = validateApiKey(opts.apiKey);
+    const provider = (opts.provider as LlmProvider) ?? result.provider ?? 'openrouter';
+    llmConfig = { provider, apiKey: opts.apiKey };
   } else {
-    const result = await promptApiKey();
-    apiKey = result.apiKey;
-    provider = result.provider;
+    llmConfig = await promptApiKey(env);
   }
 
   // 4. Platforms
@@ -161,9 +199,8 @@ async function runInit(opts: InitOptions): Promise<void> {
   const config: DeploymentConfig = {
     ...defaults,
     llm: {
-      provider,
-      apiKey,
-      model: defaults.llm.model,
+      ...llmConfig,
+      model: llmConfig.model ?? defaults.llm.model,
     },
     channels: toChannelSelections(channelIds),
     securityLevel,

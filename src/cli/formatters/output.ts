@@ -46,6 +46,16 @@ export function printDetectedEnv(env: DetectedEnvironment): void {
   row('systemd', env.hasSystemd ? chalk.green('yes') : chalk.dim('no'));
   row('Tailscale', env.isTailscaleAvailable ? chalk.green('yes') : chalk.dim('no'));
 
+  if (env.ollamaAvailable) {
+    const modelCount = env.ollamaModels?.length ?? 0;
+    row('Ollama', chalk.green('available') + ` (${modelCount} model${modelCount !== 1 ? 's' : ''})`);
+    if (env.ollamaModels && env.ollamaModels.length > 0) {
+      row('', env.ollamaModels.join(', '));
+    }
+  } else {
+    row('Ollama', chalk.dim('not found'));
+  }
+
   if (env.existingInstall) {
     row('Existing install', chalk.yellow(env.existingInstall));
   }
@@ -65,7 +75,14 @@ export function printDeploymentSummary(config: DeploymentConfig): void {
     console.log(`  ${chalk.dim(label.padEnd(22))} ${value}`);
   };
 
-  row('LLM Provider', config.llm.provider);
+  if (config.llm.routing?.mode === 'hybrid') {
+    const fallback = config.llm.routing.fallback ?? 'cloud';
+    row('LLM', `Hybrid (Ollama + ${fallback.charAt(0).toUpperCase() + fallback.slice(1)})`);
+  } else if (config.llm.provider === 'ollama' && config.llm.ollama) {
+    row('LLM', `Ollama (${config.llm.ollama.model}, local)`);
+  } else {
+    row('LLM Provider', config.llm.provider);
+  }
   row('Security Level', config.securityLevel);
   row('Mode', config.deployment.mode);
   row('Gateway', `${config.gateway.bind}:${config.gateway.port}`);

@@ -2,7 +2,7 @@
 // OpenClaw Deploy — Hardened Default Configuration
 // ============================================================
 
-import type { DeploymentConfig, SecurityLevel } from '../../types/index.js';
+import type { DeploymentConfig, LlmProvider, SecurityLevel } from '../../types/index.js';
 
 // Fallback security-level gateway binds in case security/levels.js
 // is not yet available. These are replaced at runtime when the
@@ -19,13 +19,33 @@ const GATEWAY_PORT = 18789;
  * Returns a hardened default DeploymentConfig for the given security level.
  * Users are expected to fill in secrets (apiKey, tokens) before deployment.
  */
-export function getDefaults(securityLevel: SecurityLevel = 'L2'): DeploymentConfig {
+export function getDefaults(
+  securityLevel: SecurityLevel = 'L2',
+  provider: LlmProvider = 'anthropic',
+  availableMemoryMB?: number,
+): DeploymentConfig {
+  const llm: DeploymentConfig['llm'] = provider === 'ollama'
+    ? {
+        provider: 'ollama',
+        apiKey: '',
+        model: (availableMemoryMB && availableMemoryMB < 16384)
+          ? 'llama3.1:8b'
+          : 'llama3.3:70b',
+        ollama: {
+          baseUrl: 'http://localhost:11434',
+          model: (availableMemoryMB && availableMemoryMB < 16384)
+            ? 'llama3.1:8b'
+            : 'llama3.3:70b',
+        },
+      }
+    : {
+        provider,
+        apiKey: '',
+        model: 'claude-opus-4-6',
+      };
+
   return {
-    llm: {
-      provider: 'anthropic',
-      apiKey: '',
-      model: 'claude-opus-4-6',
-    },
+    llm,
     channels: [
       { id: 'webchat', enabled: true },
     ],
