@@ -3,6 +3,12 @@ import { Command } from 'commander';
 import { createInitCommand } from './cli/commands/init.js';
 import { createTrainCommand } from './cli/commands/train.js';
 import { createServeCommand } from './cli/commands/serve.js';
+import { createCredentialsCommand } from './cli/commands/credentials.js';
+import { createUpdateCommand } from './cli/commands/update.js';
+import { createAuditCommand } from './cli/commands/audit.js';
+import { createChannelsCommand } from './cli/commands/channels.js';
+import { createStatusCommand } from './cli/commands/status.js';
+import { createTeardownCommand } from './cli/commands/teardown.js';
 
 const program = new Command();
 
@@ -16,12 +22,13 @@ program.addCommand(createInitCommand(), { isDefault: true });
 program.addCommand(createTrainCommand());
 program.addCommand(createServeCommand());
 
-// Stub commands for Phase 2
-program.command('channels').description('Manage messaging platforms (coming soon)');
-program.command('audit').description('Run security audit (coming soon)');
-program.command('status').description('Check deployment health (coming soon)');
-program.command('credentials').description('Manage secrets (coming soon)');
-program.command('update').description('Update OpenClaw version (coming soon)');
-program.command('teardown').description('Remove deployment (coming soon)');
+// Phase 2 commands
+program.addCommand(createCredentialsCommand());
+program.addCommand(createUpdateCommand());
+program.addCommand(createAuditCommand());
+
+program.addCommand(createChannelsCommand());
+program.addCommand(createStatusCommand());
+program.addCommand(createTeardownCommand());
 
 program.parse();

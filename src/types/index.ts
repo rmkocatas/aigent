@@ -402,13 +402,33 @@ export interface TelegramVoice {
   file_size?: number;
 }
 
+// --- WhatsApp Media Types ---
+
+export interface WhatsAppMessage {
+  from: string;
+  id: string;
+  timestamp: string;
+  type: 'text' | 'image' | 'audio' | 'document' | 'reaction' | 'interactive';
+  text?: { body: string };
+  image?: WhatsAppMedia;
+  audio?: WhatsAppMedia;
+  document?: WhatsAppMedia & { filename?: string };
+}
+
+export interface WhatsAppMedia {
+  id: string;
+  mime_type?: string;
+  sha256?: string;
+  caption?: string;
+}
+
 // --- Scheduled Reminders ---
 
 export interface Reminder {
   id: string;
   userId: string;
   chatId: number | string;
-  channel: 'telegram' | 'webchat';
+  channel: 'telegram' | 'webchat' | 'whatsapp';
   message: string;
   triggerAt: string;
   createdAt: string;
@@ -475,6 +495,10 @@ export interface GatewayRuntimeConfig {
     persistDir?: string;
   };
   whisperApiKey: string | null;
+  whatsappAccessToken: string | null;
+  whatsappPhoneNumberId: string | null;
+  whatsappVerifyToken: string | null;
+  whatsappAllowedNumbers: string[];
 }
 
 export interface StreamChunk {
@@ -505,4 +529,77 @@ export interface AuditReport {
   results: AuditResult[];
   overallStatus: 'pass' | 'warning' | 'critical';
   autoFixedCount: number;
+}
+
+// --- Credentials ---
+
+export interface CredentialEntry {
+  key: string;
+  value: string;
+  source: 'env-file' | 'environment';
+}
+
+export interface CredentialListResult {
+  credentials: CredentialEntry[];
+  envFilePath: string;
+}
+
+export interface CredentialVerifyResult {
+  key: string;
+  provider: LlmProvider | null;
+  valid: boolean;
+  error?: string;
+}
+
+export interface CredentialRotateResult {
+  rotatedKeys: string[];
+  newSecrets: GeneratedSecrets;
+}
+
+// --- Update ---
+
+export interface VersionCheckResult {
+  currentVersion: string;
+  latestVersion: string;
+  updateAvailable: boolean;
+  releaseNotes?: string;
+  publishedAt?: string;
+}
+
+export interface UpdateResult {
+  success: boolean;
+  previousVersion: string;
+  newVersion: string;
+  pullOutput: string;
+  healthCheckPassed: boolean;
+  error?: string;
+}
+
+// --- Deployment Status ---
+
+export interface ChannelStatus {
+  id: ChannelId;
+  enabled: boolean;
+  connected: boolean;
+  error?: string;
+}
+
+export interface DeploymentStatus {
+  running: boolean;
+  containers: string[];
+  gatewayHealthy: boolean;
+  gatewayUrl: string;
+  securityLevel: string;
+  channels: ChannelStatus[];
+  uptime?: string;
+  error?: string;
+}
+
+// --- Teardown ---
+
+export interface TeardownResult {
+  containersStopped: boolean;
+  filesRemoved: string[];
+  volumesRemoved: boolean;
+  errors: string[];
 }

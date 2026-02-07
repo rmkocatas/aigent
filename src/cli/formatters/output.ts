@@ -8,7 +8,15 @@ import type {
   DeploymentConfig,
   AuditReport,
   DeploymentResult,
+  CredentialListResult,
+  CredentialVerifyResult,
+  VersionCheckResult,
+  UpdateResult,
+  ChannelSelection,
+  DeploymentStatus,
+  TeardownResult,
 } from '../../types/index.js';
+import { maskCredentialValue } from '../../core/credentials/manager.js';
 
 // ---------------------------------------------------------------------------
 // Banner
@@ -182,4 +190,192 @@ export function printError(message: string): void {
 
 export function printWarning(message: string): void {
   console.warn(chalk.yellow(`  Warning: ${message}`));
+}
+
+// ---------------------------------------------------------------------------
+// Credentials
+// ---------------------------------------------------------------------------
+
+export function printCredentialsList(result: CredentialListResult): void {
+  console.log('');
+  console.log(chalk.bold('  Configured Credentials'));
+  console.log(chalk.dim('  ----------------------'));
+
+  const row = (label: string, value: string) => {
+    console.log(`  ${chalk.dim(label.padEnd(36))} ${value}`);
+  };
+
+  for (const entry of result.credentials) {
+    row(entry.key, maskCredentialValue(entry.value));
+  }
+
+  console.log('');
+  console.log(chalk.dim(`  Source: ${result.envFilePath}`));
+  console.log('');
+}
+
+export function printCredentialsVerifyResults(results: CredentialVerifyResult[]): void {
+  console.log('');
+  console.log(chalk.bold('  Credential Verification'));
+  console.log(chalk.dim('  ----------------------'));
+
+  for (const r of results) {
+    const icon = r.valid ? chalk.green('\u2714') : chalk.red('\u2718');
+    const status = r.valid ? chalk.green('valid') : chalk.red('invalid');
+    const provider = r.provider ? chalk.dim(` (${r.provider})`) : '';
+    const error = r.error ? chalk.dim(` — ${r.error}`) : '';
+
+    console.log(`  ${icon} ${r.key.padEnd(30)} ${status}${provider}${error}`);
+  }
+
+  console.log('');
+}
+
+// ---------------------------------------------------------------------------
+// Version / Update
+// ---------------------------------------------------------------------------
+
+export function printVersionCheck(result: VersionCheckResult): void {
+  console.log('');
+  console.log(chalk.bold('  Version Info'));
+  console.log(chalk.dim('  ------------'));
+
+  const row = (label: string, value: string) => {
+    console.log(`  ${chalk.dim(label.padEnd(22))} ${value}`);
+  };
+
+  row('Current', result.currentVersion);
+  row('Latest', result.latestVersion);
+
+  if (result.updateAvailable) {
+    row('Status', chalk.yellow('Update available'));
+  } else {
+    row('Status', chalk.green('Up to date'));
+  }
+
+  if (result.publishedAt) {
+    row('Published', result.publishedAt);
+  }
+
+  console.log('');
+}
+
+export function printUpdateResult(result: UpdateResult): void {
+  console.log('');
+
+  if (result.success) {
+    console.log(chalk.bold.green('  Update successful!'));
+    console.log(`  ${chalk.dim('Previous version:')} ${result.previousVersion}`);
+    console.log(`  ${chalk.dim('New version:')}      ${result.newVersion}`);
+    console.log(`  ${chalk.dim('Health check:')}     ${chalk.green('passed')}`);
+  } else {
+    console.log(chalk.bold.red('  Update failed.'));
+    if (result.error) {
+      console.log(`  ${chalk.red(result.error)}`);
+    }
+    if (!result.healthCheckPassed) {
+      console.log(`  ${chalk.dim('Health check:')}     ${chalk.red('failed')}`);
+    }
+  }
+
+  console.log('');
+}
+
+// ---------------------------------------------------------------------------
+// Channels
+// ---------------------------------------------------------------------------
+
+export function printChannelsList(channels: ChannelSelection[]): void {
+  console.log('');
+  console.log(chalk.bold('  Configured Channels'));
+  console.log(chalk.dim('  -------------------'));
+
+  for (const ch of channels) {
+    const icon = ch.enabled ? chalk.green('\u2714') : chalk.dim('\u2013');
+    const status = ch.enabled ? chalk.green('enabled') : chalk.dim('disabled');
+    const tokenInfo = ch.token ? chalk.dim(' (token set)') : '';
+
+    console.log(`  ${icon} ${ch.id.padEnd(14)} ${status}${tokenInfo}`);
+  }
+
+  console.log('');
+}
+
+// ---------------------------------------------------------------------------
+// Deployment Status
+// ---------------------------------------------------------------------------
+
+export function printDeploymentStatus(status: DeploymentStatus): void {
+  console.log('');
+  console.log(chalk.bold('  Deployment Status'));
+  console.log(chalk.dim('  -----------------'));
+
+  const row = (label: string, value: string) => {
+    console.log(`  ${chalk.dim(label.padEnd(22))} ${value}`);
+  };
+
+  row('Containers', status.running
+    ? chalk.green('running') + chalk.dim(` (${status.containers.join(', ')})`)
+    : chalk.red('stopped'));
+  row('Gateway', status.gatewayHealthy
+    ? chalk.green('healthy')
+    : chalk.red('unhealthy'));
+  row('Gateway URL', chalk.cyan(status.gatewayUrl));
+  row('Security Level', status.securityLevel);
+
+  if (status.uptime) {
+    row('Uptime', status.uptime);
+  }
+
+  if (status.channels.length > 0) {
+    console.log('');
+    console.log(chalk.dim('  Channels:'));
+    for (const ch of status.channels) {
+      if (!ch.enabled) continue;
+      const icon = ch.connected ? chalk.green('\u2714') : chalk.red('\u2718');
+      const state = ch.connected ? chalk.green('connected') : chalk.red('disconnected');
+      const error = ch.error ? chalk.dim(` — ${ch.error}`) : '';
+      console.log(`    ${icon} ${ch.id.padEnd(14)} ${state}${error}`);
+    }
+  }
+
+  if (status.error) {
+    console.log('');
+    console.log(`  ${chalk.red(status.error)}`);
+  }
+
+  console.log('');
+}
+
+// ---------------------------------------------------------------------------
+// Teardown
+// ---------------------------------------------------------------------------
+
+export function printTeardownResult(result: TeardownResult): void {
+  console.log('');
+
+  const row = (label: string, value: string) => {
+    console.log(`  ${chalk.dim(label.padEnd(22))} ${value}`);
+  };
+
+  row('Containers', result.containersStopped
+    ? chalk.green('stopped')
+    : chalk.red('failed to stop'));
+
+  if (result.filesRemoved.length > 0) {
+    row('Files removed', result.filesRemoved.join(', '));
+  }
+
+  if (result.volumesRemoved) {
+    row('Volumes', chalk.green('removed'));
+  }
+
+  if (result.errors.length > 0) {
+    console.log('');
+    for (const err of result.errors) {
+      console.log(`  ${chalk.red('\u2718')} ${err}`);
+    }
+  }
+
+  console.log('');
 }
