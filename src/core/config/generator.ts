@@ -367,6 +367,12 @@ function generateEnvFile(
     if (config.deployment.mode === 'docker') {
       lines.push('OLLAMA_HOST=http://host.docker.internal:11434');
     }
+    // In hybrid mode, also save the cloud API key for fallback
+    if (config.llm.routing?.mode === 'hybrid' && config.llm.apiKey) {
+      const fallbackProvider = config.llm.routing.fallback ?? 'anthropic';
+      const envVarName = apiKeyEnvVar(fallbackProvider);
+      lines.push(`${envVarName}=${config.llm.apiKey}`);
+    }
   } else {
     const envVarName = apiKeyEnvVar(config.llm.provider);
     lines.push(`${envVarName}=${config.llm.apiKey}`);

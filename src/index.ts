@@ -2,6 +2,7 @@
 import { Command } from 'commander';
 import { createInitCommand } from './cli/commands/init.js';
 import { createTrainCommand } from './cli/commands/train.js';
+import { createServeCommand } from './cli/commands/serve.js';
 
 const program = new Command();
 
@@ -13,6 +14,7 @@ program
 // Default command is init
 program.addCommand(createInitCommand(), { isDefault: true });
 program.addCommand(createTrainCommand());
+program.addCommand(createServeCommand());
 
 // Stub commands for Phase 2
 program.command('channels').description('Manage messaging platforms (coming soon)');

@@ -54,6 +54,14 @@ function toChannelSelections(ids: ChannelId[]): ChannelSelection[] {
   return unique.map((id) => ({ id, enabled: true }));
 }
 
+function resolveHome(p: string): string {
+  if (p.startsWith('~/')) {
+    const home = process.env.HOME || process.env.USERPROFILE || '';
+    return p.replace('~', home);
+  }
+  return p;
+}
+
 function resolveBindAddress(bind: GatewayBind): string {
   switch (bind) {
     case 'loopback': return '127.0.0.1';
@@ -253,7 +261,7 @@ async function runInit(opts: InitOptions): Promise<void> {
     if (enableTraining) {
       config.training = {
         enabled: true,
-        dataDir: '~/.openclaw/training',
+        dataDir: resolveHome('~/.openclaw/training'),
         autoCollect: true,
         minEntriesForTraining: 500,
         autoTrain: false,
@@ -294,7 +302,7 @@ async function runInit(opts: InitOptions): Promise<void> {
   }
 
   // 9. Write files
-  const installDir = config.deployment.installDir;
+  const installDir = resolveHome(config.deployment.installDir);
   const writingSpinner = quiet ? null : ora('Writing files...').start();
 
   await mkdir(installDir, { recursive: true });
