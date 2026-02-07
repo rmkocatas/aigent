@@ -4,6 +4,7 @@ import { createRequestHandler } from './router.js';
 import { SessionStore } from './session-store.js';
 import { TrainingDataStore } from '../training/data-collector.js';
 import { createTelegramBot, type TelegramBot } from '../channels/telegram/index.js';
+import { createWhatsAppBot, type WhatsAppBot } from '../channels/whatsapp/index.js';
 import { createToolRegistry } from '../tools/index.js';
 import { ReminderScheduler } from '../services/reminder-scheduler.js';
 import { ApprovalManager } from '../services/approval-manager.js';
@@ -14,6 +15,7 @@ export interface GatewayServer {
   readonly server: Server;
   readonly sessions: SessionStore;
   readonly telegramBot: TelegramBot | null;
+  readonly whatsappBot: WhatsAppBot | null;
 }
 
 export async function createGatewayServer(
@@ -37,11 +39,31 @@ export async function createGatewayServer(
   const remindersDir = config.tools.workspaceDir.replace(/workspace\/?$/, 'reminders');
   const reminderScheduler = new ReminderScheduler(remindersDir);
 
+  // WhatsApp bot (if enabled + credentials present)
+  let whatsappBot: WhatsAppBot | null = null;
+  const whatsappEnabled = config.channels?.some(
+    (ch) => ch.id === 'whatsapp' && ch.enabled,
+  );
+  if (
+    whatsappEnabled &&
+    config.whatsappAccessToken &&
+    config.whatsappPhoneNumberId &&
+    config.whatsappVerifyToken
+  ) {
+    whatsappBot = createWhatsAppBot(
+      config.whatsappAccessToken,
+      config.whatsappPhoneNumberId,
+      config.whatsappVerifyToken,
+      { config, sessions, trainingStore, toolRegistry, approvalManager },
+    );
+  }
+
   const handler = createRequestHandler({
     config,
     sessions,
     trainingStore,
     toolRegistry,
+    whatsappBot,
   });
 
   const server = createServer(handler);
@@ -67,12 +89,17 @@ export async function createGatewayServer(
         : reminder.chatId;
       telegramBot.sendMessage(chatId, `Reminder: ${reminder.message}`).catch(() => {});
     }
+    if (whatsappBot && reminder.channel === 'whatsapp') {
+      const to = String(reminder.chatId);
+      whatsappBot.sendTextMessage(to, `Reminder: ${reminder.message}`).catch(() => {});
+    }
   });
 
   return {
     server,
     sessions,
     telegramBot,
+    whatsappBot,
     async start() {
       sessions.start();
       await new Promise<void>((resolve, reject) => {

@@ -28,7 +28,7 @@ import { manageContextWindow } from './context-manager.js';
 export interface ChatPipelineInput {
   message: string;
   conversationId?: string;
-  source: 'webchat' | 'telegram' | 'api';
+  source: 'webchat' | 'telegram' | 'whatsapp' | 'api';
   images?: Array<{ base64: string; mediaType: string }>;
   documentText?: string;
 }
@@ -159,7 +159,7 @@ export async function processChatMessage(
   }
 
   // Derive stable user ID for per-user memory
-  const userId = conversation.id.startsWith('telegram:')
+  const userId = conversation.id.startsWith('telegram:') || conversation.id.startsWith('whatsapp:')
     ? conversation.id
     : `${input.source}:${conversation.id}`;
 

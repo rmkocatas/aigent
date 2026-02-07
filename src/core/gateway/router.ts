@@ -2,8 +2,14 @@ import type { IncomingMessage, ServerResponse } from 'node:http';
 import { authenticateRequest } from './auth.js';
 import { handleHealth, handleWebchat, handleConfig, handleChat } from './handlers.js';
 import type { HandlerDeps } from './handlers.js';
+import type { WhatsAppBot } from '../channels/whatsapp/bot.js';
+import { verifyWhatsAppWebhook, handleWhatsAppWebhook } from '../channels/whatsapp/webhook-handler.js';
 
-export function createRequestHandler(deps: HandlerDeps) {
+export interface RouterDeps extends HandlerDeps {
+  whatsappBot?: WhatsAppBot | null;
+}
+
+export function createRequestHandler(deps: RouterDeps) {
   return (req: IncomingMessage, res: ServerResponse) => {
     const url = new URL(req.url ?? '/', `http://${req.headers.host ?? 'localhost'}`);
     const path = url.pathname;
@@ -29,6 +35,18 @@ export function createRequestHandler(deps: HandlerDeps) {
     if (method === 'GET' && path === '/') {
       handleWebchat(req, res);
       return;
+    }
+
+    // WhatsApp webhook routes (public — Meta verifies via token)
+    if (path === '/webhook/whatsapp') {
+      if (method === 'GET' && deps.config.whatsappVerifyToken) {
+        verifyWhatsAppWebhook(req, res, deps.config.whatsappVerifyToken);
+        return;
+      }
+      if (method === 'POST' && deps.whatsappBot) {
+        handleWhatsAppWebhook(req, res, deps.whatsappBot).catch(() => {});
+        return;
+      }
     }
 
     // Protected routes

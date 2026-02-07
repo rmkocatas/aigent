@@ -87,5 +87,9 @@ export async function loadGatewayConfig(
       persistDir: resolveHome(config.session?.persistDir ?? '~/.openclaw/sessions'),
     },
     whisperApiKey: envVars.WHISPER_API_KEY || envVars.OPENAI_API_KEY || null,
+    whatsappAccessToken: envVars.WHATSAPP_ACCESS_TOKEN || null,
+    whatsappPhoneNumberId: envVars.WHATSAPP_PHONE_NUMBER_ID || null,
+    whatsappVerifyToken: envVars.WHATSAPP_VERIFY_TOKEN || null,
+    whatsappAllowedNumbers: config.whatsapp?.allowedNumbers ?? [],
   };
 }
