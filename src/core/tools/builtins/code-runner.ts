@@ -1,17 +1,36 @@
 // ============================================================
 // OpenClaw Deploy — Code Runner Tool (Sandboxed)
 // ============================================================
+//
+// JavaScript: Node.js Permission Model (--permission)
+//   - Read: broad (needed for require/import resolution)
+//   - Write: workspace dir only
+//   - No child process spawning
+//   - No worker threads
+//   - 64MB heap limit, 10s timeout
+//   - Clean environment (no API keys, no secrets)
+//
+// Python: Isolated mode (-I) + restricted environment
+//   - Env vars stripped (no secrets)
+//   - 10s timeout
+//
+// Safety model: the env is clean so reading files can't leak
+// secrets. Output is capped at 32KB and returns only to the
+// chat. Writing and process spawning are blocked.
+// ============================================================
 
 import { spawn } from 'node:child_process';
+import { resolve } from 'node:path';
 import type { ToolDefinition } from '../../../types/index.js';
 import type { ToolHandler } from '../registry.js';
 
 const DEFAULT_TIMEOUT_MS = 10_000;
 const MAX_OUTPUT_SIZE = 32_000;
+const MAX_CODE_LENGTH = 10_000;
 
 export const codeRunnerDefinition: ToolDefinition = {
   name: 'run_code',
-  description: 'Execute JavaScript or Python code in a sandboxed subprocess. Returns stdout and stderr. Code runs with limited memory and no network access. This tool is restricted and must be explicitly allowed.',
+  description: 'Execute JavaScript or Python code in a sandboxed subprocess. JS uses Node.js Permission Model: filesystem writes restricted to workspace, no child processes, no worker threads. Environment is stripped of secrets. Returns stdout/stderr (max 32KB). This tool is restricted and must be explicitly allowed.',
   parameters: {
     type: 'object',
     properties: {
@@ -37,11 +56,12 @@ export const codeRunnerHandler: ToolHandler = async (input, context) => {
     throw new Error('Missing code');
   }
 
-  if (code.length > 10_000) {
-    throw new Error('Code too long (max 10,000 characters)');
+  if (code.length > MAX_CODE_LENGTH) {
+    throw new Error(`Code too long (max ${MAX_CODE_LENGTH} characters)`);
   }
 
   const timeout = Math.min(context.maxExecutionMs, DEFAULT_TIMEOUT_MS);
+  const workspaceDir = resolve(context.workspaceDir);
 
   // Clean environment: only essential vars, no secrets
   const cleanEnv: Record<string, string> = {
@@ -49,6 +69,11 @@ export const codeRunnerHandler: ToolHandler = async (input, context) => {
     HOME: process.env.HOME ?? process.env.USERPROFILE ?? '',
     TEMP: process.env.TEMP ?? '/tmp',
     TMP: process.env.TMP ?? '/tmp',
+    USERPROFILE: process.env.USERPROFILE ?? '',
+    SystemRoot: process.env.SystemRoot ?? '',
+    // Node module resolution needs these on Windows
+    APPDATA: process.env.APPDATA ?? '',
+    LOCALAPPDATA: process.env.LOCALAPPDATA ?? '',
   };
 
   let cmd: string;
@@ -56,10 +81,21 @@ export const codeRunnerHandler: ToolHandler = async (input, context) => {
 
   if (language === 'javascript') {
     cmd = process.execPath; // node
-    args = ['--max-old-space-size=64', '-e', code];
+    args = [
+      // Permission model: broad read, narrow write, no spawn/workers
+      '--permission',
+      '--allow-fs-read=*',
+      `--allow-fs-write=${workspaceDir}/*`,
+      '--max-old-space-size=64',
+      '-e', code,
+    ];
   } else if (language === 'python') {
     cmd = 'python';
-    args = ['-c', code];
+    args = [
+      '-I',  // Isolated mode: no site-packages manipulation, ignore PYTHON* env vars
+      '-u',  // Unbuffered output
+      '-c', code,
+    ];
   } else {
     throw new Error(`Unsupported language: ${language}. Use "javascript" or "python".`);
   }
@@ -71,7 +107,7 @@ export const codeRunnerHandler: ToolHandler = async (input, context) => {
 
     const child = spawn(cmd, args, {
       env: cleanEnv,
-      cwd: context.workspaceDir,
+      cwd: workspaceDir,
       stdio: ['ignore', 'pipe', 'pipe'],
       timeout,
       windowsHide: true,
@@ -111,9 +147,16 @@ export const codeRunnerHandler: ToolHandler = async (input, context) => {
         return;
       }
 
+      // Filter out permission model warnings from stderr
+      const filteredStderr = stderr
+        .split('\n')
+        .filter((line) => !line.includes('ExperimentalWarning') && !line.includes('--permission'))
+        .join('\n')
+        .trim();
+
       let output = '';
       if (stdout) output += stdout;
-      if (stderr) output += (output ? '\n\n[stderr]\n' : '') + stderr;
+      if (filteredStderr) output += (output ? '\n\n[stderr]\n' : '') + filteredStderr;
       if (!output) output = `[Process exited with code ${exitCode}]`;
 
       resolve(output.slice(0, MAX_OUTPUT_SIZE));

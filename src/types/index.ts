@@ -495,6 +495,8 @@ export interface GatewayRuntimeConfig {
     persistDir?: string;
   };
   whisperApiKey: string | null;
+  whisperApiUrl: string;
+  whisperModel: string;
   whatsappAccessToken: string | null;
   whatsappPhoneNumberId: string | null;
   whatsappVerifyToken: string | null;

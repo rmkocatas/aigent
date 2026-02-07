@@ -1,15 +1,27 @@
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, beforeAll, afterAll } from 'vitest';
 import { codeRunnerHandler } from '../../../src/core/tools/builtins/code-runner.js';
 import type { ToolContext } from '../../../src/core/tools/registry.js';
+import { mkdtemp, rm } from 'node:fs/promises';
+import { join } from 'node:path';
 import { tmpdir } from 'node:os';
 
-const context: ToolContext = {
-  workspaceDir: tmpdir(),
-  memoryDir: tmpdir(),
-  conversationId: 'test',
-  userId: 'test-user',
-  maxExecutionMs: 10000,
-};
+let workDir: string;
+let context: ToolContext;
+
+beforeAll(async () => {
+  workDir = await mkdtemp(join(tmpdir(), 'coderunner-'));
+  context = {
+    workspaceDir: workDir,
+    memoryDir: workDir,
+    conversationId: 'test',
+    userId: 'test-user',
+    maxExecutionMs: 10000,
+  };
+});
+
+afterAll(async () => {
+  await rm(workDir, { recursive: true, force: true });
+});
 
 describe('run_code tool', () => {
   it('executes javascript', async () => {
@@ -36,6 +48,22 @@ describe('run_code tool', () => {
     );
     expect(result).toContain('timed out');
   }, 10000);
+
+  it('blocks filesystem writes outside workspace', async () => {
+    const result = await codeRunnerHandler(
+      { language: 'javascript', code: 'const fs=require("fs");try{fs.writeFileSync("/tmp/test.txt","hack")}catch(e){console.log("BLOCKED:"+e.code)}' },
+      context,
+    );
+    expect(result).toContain('BLOCKED:');
+  });
+
+  it('blocks child process spawning', async () => {
+    const result = await codeRunnerHandler(
+      { language: 'javascript', code: 'const{execSync}=require("child_process");try{execSync("echo hi")}catch(e){console.log("BLOCKED:"+e.code)}' },
+      context,
+    );
+    expect(result).toContain('BLOCKED:');
+  });
 
   it('rejects unsupported language', async () => {
     await expect(

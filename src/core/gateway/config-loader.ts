@@ -86,7 +86,13 @@ export async function loadGatewayConfig(
       maxConcurrent: config.session?.maxConcurrent ?? 4,
       persistDir: resolveHome(config.session?.persistDir ?? '~/.openclaw/sessions'),
     },
-    whisperApiKey: envVars.WHISPER_API_KEY || envVars.OPENAI_API_KEY || null,
+    whisperApiKey: envVars.WHISPER_API_KEY || envVars.GROQ_API_KEY || envVars.OPENAI_API_KEY || null,
+    whisperApiUrl: envVars.GROQ_API_KEY && !envVars.WHISPER_API_KEY && !envVars.OPENAI_API_KEY
+      ? 'https://api.groq.com/openai/v1/audio/transcriptions'
+      : 'https://api.openai.com/v1/audio/transcriptions',
+    whisperModel: envVars.GROQ_API_KEY && !envVars.WHISPER_API_KEY && !envVars.OPENAI_API_KEY
+      ? 'whisper-large-v3-turbo'
+      : 'whisper-1',
     whatsappAccessToken: envVars.WHATSAPP_ACCESS_TOKEN || null,
     whatsappPhoneNumberId: envVars.WHATSAPP_PHONE_NUMBER_ID || null,
     whatsappVerifyToken: envVars.WHATSAPP_VERIFY_TOKEN || null,

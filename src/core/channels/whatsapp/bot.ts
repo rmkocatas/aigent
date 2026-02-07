@@ -194,7 +194,7 @@ export class WhatsAppBot {
   private async handleAudioMessage(from: string, mediaId: string): Promise<void> {
     const whisperKey = this.deps.config.whisperApiKey;
     if (!whisperKey) {
-      await this.sendTextMessage(from, 'Voice messages require a Whisper API key. Please configure OPENAI_API_KEY.');
+      await this.sendTextMessage(from, 'Voice messages require a Whisper API key. Set GROQ_API_KEY (free) or OPENAI_API_KEY.');
       return;
     }
 
@@ -204,7 +204,10 @@ export class WhatsAppBot {
       25 * 1024 * 1024,
     );
 
-    const transcription = await transcribeAudio(buffer, whisperKey);
+    const transcription = await transcribeAudio(buffer, whisperKey, {
+      apiUrl: this.deps.config.whisperApiUrl,
+      model: this.deps.config.whisperModel,
+    });
     await this.handleChatMessage(from, transcription);
   }
 

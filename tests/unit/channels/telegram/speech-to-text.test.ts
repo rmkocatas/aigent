@@ -59,6 +59,29 @@ describe('transcribeAudio', () => {
     );
   });
 
+  it('uses custom API URL and model when config provided', async () => {
+    const mockResponse = { text: 'Groq transcription' };
+
+    globalThis.fetch = vi.fn().mockResolvedValue({
+      ok: true,
+      json: async () => mockResponse,
+    });
+
+    const buffer = Buffer.from('fake-audio-data');
+    const result = await transcribeAudio(buffer, 'gsk-test-key', {
+      apiUrl: 'https://api.groq.com/openai/v1/audio/transcriptions',
+      model: 'whisper-large-v3-turbo',
+    });
+
+    expect(result).toBe('Groq transcription');
+
+    const fetchCall = vi.mocked(globalThis.fetch).mock.calls[0];
+    expect(fetchCall[0]).toBe('https://api.groq.com/openai/v1/audio/transcriptions');
+
+    const body = (fetchCall[1] as RequestInit).body as FormData;
+    expect(body.get('model')).toBe('whisper-large-v3-turbo');
+  });
+
   it('throws on timeout', async () => {
     // Simulate what happens when AbortSignal.timeout fires:
     // fetch rejects with a TimeoutError (a DOMException with name "TimeoutError")

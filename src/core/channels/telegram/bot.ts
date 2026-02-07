@@ -347,7 +347,7 @@ export class TelegramBot {
     if (!whisperKey) {
       await this.sendMessage(
         chatId,
-        'Voice messages are not enabled. Set WHISPER_API_KEY in your .env file.',
+        'Voice messages are not enabled. Set GROQ_API_KEY (free) or OPENAI_API_KEY in your .env file.',
       );
       return;
     }
@@ -361,7 +361,10 @@ export class TelegramBot {
         25 * 1024 * 1024,
       );
 
-      const transcription = await transcribeAudio(buffer, whisperKey);
+      const transcription = await transcribeAudio(buffer, whisperKey, {
+        apiUrl: this.deps.config.whisperApiUrl,
+        model: this.deps.config.whisperModel,
+      });
 
       await this.handleChatMessage(chatId, transcription);
     } catch (err) {
