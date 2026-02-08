@@ -38,7 +38,7 @@ function interpolateVars(text: string, vars: Record<string, string>): string {
 export async function loadGatewayConfig(
   configDir?: string,
 ): Promise<GatewayRuntimeConfig> {
-  const dir = resolveHome(configDir ?? '~/.openclaw');
+  const dir = resolveHome(configDir ?? process.env.OPENCLAW_CONFIG_DIR ?? '~/.openclaw');
 
   const envContent = await readFile(join(dir, '.env'), 'utf-8');
   const envVars = parseEnvFile(envContent);
@@ -64,7 +64,7 @@ export async function loadGatewayConfig(
     training: config.training
       ? {
           enabled: config.training.enabled ?? false,
-          dataDir: resolveHome(config.training.dataDir ?? '~/.openclaw/training'),
+          dataDir: resolveHome(config.training.dataDir ?? `${dir}/training`),
           autoCollect: config.training.autoCollect ?? true,
           minEntriesForTraining: config.training.minEntries ?? 500,
           autoTrain: config.training.autoTrain ?? false,
@@ -77,25 +77,47 @@ export async function loadGatewayConfig(
       deny: config.tools?.deny ?? [],
       allow: config.tools?.allow ?? undefined,
       sandboxMode: config.agents?.sandbox?.mode ?? 'off',
-      workspaceDir: resolveHome(config.agents?.workspace ?? '~/.openclaw/workspace'),
+      workspaceDir: resolveHome(config.agents?.workspace ?? `${dir}/workspace`),
       maxExecutionMs: config.agents?.maxExecutionMs ?? 30000,
       allowedProjectDirs: config.tools?.allowedProjectDirs ?? [],
     },
     session: {
       idleTimeoutMinutes: config.session?.idleTimeoutMinutes ?? 30,
       maxConcurrent: config.session?.maxConcurrent ?? 4,
-      persistDir: resolveHome(config.session?.persistDir ?? '~/.openclaw/sessions'),
+      persistDir: resolveHome(config.session?.persistDir ?? `${dir}/sessions`),
     },
-    whisperApiKey: envVars.WHISPER_API_KEY || envVars.GROQ_API_KEY || envVars.OPENAI_API_KEY || null,
-    whisperApiUrl: envVars.GROQ_API_KEY && !envVars.WHISPER_API_KEY && !envVars.OPENAI_API_KEY
-      ? 'https://api.groq.com/openai/v1/audio/transcriptions'
-      : 'https://api.openai.com/v1/audio/transcriptions',
-    whisperModel: envVars.GROQ_API_KEY && !envVars.WHISPER_API_KEY && !envVars.OPENAI_API_KEY
-      ? 'whisper-large-v3-turbo'
-      : 'whisper-1',
+    whisperApiKey: envVars.WHISPER_API_KEY || envVars.HF_TOKEN || envVars.GROQ_API_KEY || envVars.OPENAI_API_KEY || null,
+    whisperApiUrl: resolveWhisperUrl(envVars),
+    whisperModel: resolveWhisperModel(envVars),
+    whisperProvider: resolveWhisperProvider(envVars),
     whatsappAccessToken: envVars.WHATSAPP_ACCESS_TOKEN || null,
     whatsappPhoneNumberId: envVars.WHATSAPP_PHONE_NUMBER_ID || null,
     whatsappVerifyToken: envVars.WHATSAPP_VERIFY_TOKEN || null,
     whatsappAllowedNumbers: config.whatsapp?.allowedNumbers ?? [],
   };
+}
+
+// --- Whisper provider resolution (priority: WHISPER > GROQ > HF > OPENAI) ---
+
+// Priority: WHISPER_API_KEY > HF_TOKEN > GROQ_API_KEY > OPENAI_API_KEY
+
+function resolveWhisperProvider(env: Record<string, string>): 'openai' | 'huggingface' {
+  if (env.WHISPER_API_KEY || env.OPENAI_API_KEY) return 'openai';
+  if (env.HF_TOKEN) return 'huggingface';
+  if (env.GROQ_API_KEY) return 'openai'; // Groq is OpenAI-compatible
+  return 'openai';
+}
+
+function resolveWhisperUrl(env: Record<string, string>): string {
+  if (env.WHISPER_API_KEY) return 'https://api.openai.com/v1/audio/transcriptions';
+  if (env.HF_TOKEN) return ''; // HF constructs URL from model name
+  if (env.GROQ_API_KEY) return 'https://api.groq.com/openai/v1/audio/transcriptions';
+  return 'https://api.openai.com/v1/audio/transcriptions';
+}
+
+function resolveWhisperModel(env: Record<string, string>): string {
+  if (env.WHISPER_API_KEY || env.OPENAI_API_KEY) return 'whisper-1';
+  if (env.HF_TOKEN) return 'openai/whisper-large-v3-turbo';
+  if (env.GROQ_API_KEY) return 'whisper-large-v3-turbo';
+  return 'whisper-1';
 }

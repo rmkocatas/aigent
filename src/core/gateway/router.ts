@@ -15,8 +15,16 @@ export function createRequestHandler(deps: RouterDeps) {
     const path = url.pathname;
     const method = req.method?.toUpperCase() ?? 'GET';
 
-    // CORS
-    res.setHeader('Access-Control-Allow-Origin', '*');
+    // CORS — restrict to same-origin only (localhost)
+    const origin = req.headers.origin ?? '';
+    const allowedOrigins = [
+      `http://127.0.0.1:${deps.config.port}`,
+      `http://localhost:${deps.config.port}`,
+    ];
+    if (allowedOrigins.includes(origin)) {
+      res.setHeader('Access-Control-Allow-Origin', origin);
+    }
+    // No Access-Control-Allow-Origin header if origin doesn't match = browser blocks it
     res.setHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
     res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization');
 

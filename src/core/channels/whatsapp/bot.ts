@@ -207,6 +207,7 @@ export class WhatsAppBot {
     const transcription = await transcribeAudio(buffer, whisperKey, {
       apiUrl: this.deps.config.whisperApiUrl,
       model: this.deps.config.whisperModel,
+      provider: this.deps.config.whisperProvider,
     });
     await this.handleChatMessage(from, transcription);
   }

@@ -63,6 +63,7 @@ export interface ChatPipelineDeps {
 }
 
 const MAX_TOOL_ITERATIONS = 10;
+const MAX_MESSAGE_LENGTH = 32_000; // 32KB — prevents token exhaustion attacks
 
 // ---------------------------------------------------------------------------
 // Pipeline
@@ -73,6 +74,10 @@ export async function processChatMessage(
   deps: ChatPipelineDeps,
   callbacks?: ChatPipelineCallbacks,
 ): Promise<ChatPipelineResult> {
+  if (input.message.length > MAX_MESSAGE_LENGTH) {
+    throw new Error(`Message too long (${input.message.length} chars, max ${MAX_MESSAGE_LENGTH})`);
+  }
+
   const conversation = await deps.sessions.getOrCreate(input.conversationId);
 
   // Prepend document text to the message when present

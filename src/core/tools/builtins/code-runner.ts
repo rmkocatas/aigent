@@ -3,7 +3,7 @@
 // ============================================================
 //
 // JavaScript: Node.js Permission Model (--permission)
-//   - Read: broad (needed for require/import resolution)
+//   - Read: workspace + Node.js install dir only
 //   - Write: workspace dir only
 //   - No child process spawning
 //   - No worker threads
@@ -14,13 +14,13 @@
 //   - Env vars stripped (no secrets)
 //   - 10s timeout
 //
-// Safety model: the env is clean so reading files can't leak
-// secrets. Output is capped at 32KB and returns only to the
-// chat. Writing and process spawning are blocked.
+// Safety model: read access is restricted to workspace and Node.js
+// dirs only. Env is clean (no secrets). Output capped at 32KB.
+// Writing and process spawning are blocked.
 // ============================================================
 
 import { spawn } from 'node:child_process';
-import { resolve } from 'node:path';
+import { resolve, dirname } from 'node:path';
 import type { ToolDefinition } from '../../../types/index.js';
 import type { ToolHandler } from '../registry.js';
 
@@ -81,10 +81,12 @@ export const codeRunnerHandler: ToolHandler = async (input, context) => {
 
   if (language === 'javascript') {
     cmd = process.execPath; // node
+    // Narrow read access: workspace + Node.js install dir (for module resolution)
+    const nodeDir = dirname(dirname(process.execPath)); // e.g. /usr/local or C:\Program Files\nodejs
     args = [
-      // Permission model: broad read, narrow write, no spawn/workers
       '--permission',
-      '--allow-fs-read=*',
+      `--allow-fs-read=${workspaceDir}/*`,
+      `--allow-fs-read=${nodeDir}/*`,
       `--allow-fs-write=${workspaceDir}/*`,
       '--max-old-space-size=64',
       '-e', code,

@@ -7,6 +7,7 @@
 // ============================================================
 
 import type { IncomingMessage, ServerResponse } from 'node:http';
+import { timingSafeEqual } from 'node:crypto';
 import type { WhatsAppMessage } from '../../../types/index.js';
 import type { WhatsAppBot } from './bot.js';
 
@@ -24,7 +25,11 @@ export function verifyWhatsAppWebhook(
   const token = url.searchParams.get('hub.verify_token');
   const challenge = url.searchParams.get('hub.challenge');
 
-  if (mode === 'subscribe' && token === verifyToken && challenge) {
+  const tokenMatch = token !== null
+    && token.length === verifyToken.length
+    && timingSafeEqual(Buffer.from(token, 'utf-8'), Buffer.from(verifyToken, 'utf-8'));
+
+  if (mode === 'subscribe' && tokenMatch && challenge) {
     res.writeHead(200, { 'Content-Type': 'text/plain' });
     res.end(challenge);
   } else {

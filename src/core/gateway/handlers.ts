@@ -15,6 +15,7 @@ export interface HandlerDeps {
 }
 
 const MAX_BODY_SIZE = 100_000; // 100KB
+const MAX_MESSAGE_LENGTH = 32_000; // 32KB — prevents token exhaustion
 
 function readBody(req: IncomingMessage): Promise<string> {
   return new Promise((resolve, reject) => {
@@ -85,6 +86,12 @@ export async function handleChat(
     if (!message || typeof message !== 'string' || !message.trim()) {
       res.writeHead(400, { 'Content-Type': 'application/json' });
       res.end(JSON.stringify({ error: 'Missing or empty message' }));
+      return;
+    }
+
+    if (message.length > MAX_MESSAGE_LENGTH) {
+      res.writeHead(413, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({ error: `Message too long (max ${MAX_MESSAGE_LENGTH} characters)` }));
       return;
     }
 

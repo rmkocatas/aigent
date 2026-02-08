@@ -146,6 +146,7 @@ function generateOpenClawJson(
   levelDef: SecurityLevelDefinition,
 ): string {
   const bindAddr = resolveBindAddress(config.gateway.bind);
+  const channelIds = config.channels.filter((ch) => ch.enabled).map((ch) => ch.id);
 
   const obj = {
     gateway: {
@@ -175,6 +176,17 @@ function generateOpenClawJson(
       deny: levelDef.tools.deny,
       ...(levelDef.tools.allow ? { allow: levelDef.tools.allow } : {}),
     },
+    // Channel-specific security: restrict to allowed users/numbers
+    ...(channelIds.includes('telegram') ? {
+      telegram: {
+        allowedUsers: [] as number[],
+      },
+    } : {}),
+    ...(channelIds.includes('whatsapp') ? {
+      whatsapp: {
+        allowedNumbers: [] as string[],
+      },
+    } : {}),
     ...(config.llm.provider === 'ollama' && config.llm.ollama ? {
       ollama: {
         baseUrl: config.llm.ollama.baseUrl,
@@ -378,8 +390,37 @@ function generateEnvFile(
     lines.push(`${envVarName}=${config.llm.apiKey}`);
   }
 
+  lines.push(`OPENCLAW_GATEWAY_PORT=${config.gateway.port}`);
+
+  // Channel-specific tokens
+  const channelIds = config.channels.filter((ch) => ch.enabled).map((ch) => ch.id);
+
+  if (channelIds.includes('telegram')) {
+    lines.push('');
+    lines.push('# Telegram Bot Token — get one from @BotFather on Telegram');
+    lines.push('TELEGRAM_BOT_TOKEN=');
+  }
+
+  if (channelIds.includes('whatsapp')) {
+    lines.push('');
+    lines.push('# WhatsApp Cloud API — https://developers.facebook.com/');
+    lines.push('WHATSAPP_ACCESS_TOKEN=');
+    lines.push('WHATSAPP_PHONE_NUMBER_ID=');
+    lines.push('WHATSAPP_VERIFY_TOKEN=');
+  }
+
+  // Voice transcription (speech-to-text)
+  if (channelIds.includes('telegram') || channelIds.includes('whatsapp')) {
+    lines.push('');
+    lines.push('# Voice transcription — first key found wins (priority: WHISPER > HF > GROQ > OPENAI)');
+    lines.push('# Groq (free): https://console.groq.com/keys');
+    lines.push('# GROQ_API_KEY=');
+    lines.push('# Hugging Face (free): https://huggingface.co/settings/tokens');
+    lines.push('# HF_TOKEN=');
+  }
+
   lines.push(
-    `OPENCLAW_GATEWAY_PORT=${config.gateway.port}`,
+    '',
     `OPENCLAW_INSTALL_DIR=${config.deployment.installDir}`,
     `OPENCLAW_WORKSPACE=${config.deployment.workspace}`,
     '',

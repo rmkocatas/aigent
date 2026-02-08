@@ -497,6 +497,7 @@ export interface GatewayRuntimeConfig {
   whisperApiKey: string | null;
   whisperApiUrl: string;
   whisperModel: string;
+  whisperProvider: 'openai' | 'huggingface';
   whatsappAccessToken: string | null;
   whatsappPhoneNumberId: string | null;
   whatsappVerifyToken: string | null;
