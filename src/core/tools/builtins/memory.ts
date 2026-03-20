@@ -23,6 +23,10 @@ export const memoryReadDefinition: ToolDefinition = {
     },
     required: ['key'],
   },
+  routing: {
+    useWhen: ['Checking if something was previously stored about the user', 'User asks you to recall a preference or fact'],
+    avoidWhen: ['This is the very first interaction with no prior context', 'User is asking a general question unrelated to stored preferences'],
+  },
 };
 
 export const memoryWriteDefinition: ToolDefinition = {
@@ -41,6 +45,10 @@ export const memoryWriteDefinition: ToolDefinition = {
       },
     },
     required: ['key', 'value'],
+  },
+  routing: {
+    useWhen: ['User explicitly asks you to remember something', 'User states a personal preference or important fact to save'],
+    avoidWhen: ['Information is temporary or session-specific', 'User is just making conversation, not asking you to remember'],
   },
 };
 

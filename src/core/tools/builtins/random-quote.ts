@@ -75,6 +75,10 @@ export const randomQuoteDefinition: ToolDefinition = {
       category: { type: 'string', description: 'Filter by category.', enum: ['inspirational', 'funny', 'wisdom', 'tech'] },
     },
   },
+  routing: {
+    useWhen: ['User asks for an inspirational or motivational quote', 'User asks for a random quote'],
+    avoidWhen: ['User is looking for a specific quote from a specific person'],
+  },
 };
 
 export const randomQuoteHandler: ToolHandler = async (input) => {

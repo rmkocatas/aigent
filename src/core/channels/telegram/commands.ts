@@ -2,6 +2,8 @@
 // OpenClaw Deploy — Telegram Bot Commands
 // ============================================================
 
+import { readFile, writeFile, mkdir } from 'node:fs/promises';
+import { join, dirname } from 'node:path';
 import type { GatewayRuntimeConfig } from '../../../types/index.js';
 import type { SessionStore } from '../../gateway/session-store.js';
 import type { ApprovalManager } from '../../services/approval-manager.js';
@@ -12,6 +14,36 @@ export interface CommandContext {
   sessions: SessionStore;
   sendMessage: (chatId: number, text: string) => Promise<void>;
   approvalManager?: ApprovalManager;
+}
+
+// ---------------------------------------------------------------------------
+// Bookmark/Pin storage
+// ---------------------------------------------------------------------------
+
+interface Bookmark {
+  id: number;
+  text: string;
+  createdAt: string;
+}
+
+function getBookmarksPath(config: GatewayRuntimeConfig, chatId: number): string {
+  const baseDir = config.tools.workspaceDir ?? '.';
+  return join(baseDir, 'bookmarks', `${chatId}.json`);
+}
+
+async function loadBookmarks(config: GatewayRuntimeConfig, chatId: number): Promise<Bookmark[]> {
+  try {
+    const content = await readFile(getBookmarksPath(config, chatId), 'utf-8');
+    return JSON.parse(content) as Bookmark[];
+  } catch {
+    return [];
+  }
+}
+
+async function saveBookmarks(config: GatewayRuntimeConfig, chatId: number, bookmarks: Bookmark[]): Promise<void> {
+  const filePath = getBookmarksPath(config, chatId);
+  await mkdir(dirname(filePath), { recursive: true });
+  await writeFile(filePath, JSON.stringify(bookmarks, null, 2), 'utf-8');
 }
 
 export async function handleCommand(
@@ -80,6 +112,50 @@ export async function handleCommand(
       }
       break;
     }
+    case '/pin': {
+      const pinText = text.slice(text.indexOf(' ') + 1).trim();
+      if (!pinText || pinText === '/pin') {
+        await ctx.sendMessage(ctx.chatId, 'Usage: /pin <text to bookmark>');
+        break;
+      }
+      const bookmarks = await loadBookmarks(ctx.config, ctx.chatId);
+      const nextId = bookmarks.length > 0 ? Math.max(...bookmarks.map((b) => b.id)) + 1 : 1;
+      bookmarks.push({ id: nextId, text: pinText, createdAt: new Date().toISOString() });
+      await saveBookmarks(ctx.config, ctx.chatId, bookmarks);
+      await ctx.sendMessage(ctx.chatId, `Bookmarked (#${nextId}).`);
+      break;
+    }
+    case '/pins': {
+      const bookmarks = await loadBookmarks(ctx.config, ctx.chatId);
+      if (bookmarks.length === 0) {
+        await ctx.sendMessage(ctx.chatId, 'No bookmarks saved. Use /pin <text> to add one.');
+        break;
+      }
+      const lines = bookmarks.map((b) => {
+        const date = new Date(b.createdAt).toLocaleDateString();
+        return `#${b.id} [${date}] ${b.text}`;
+      });
+      await ctx.sendMessage(ctx.chatId, `Bookmarks:\n${lines.join('\n')}`);
+      break;
+    }
+    case '/unpin': {
+      const idStr = text.slice(text.indexOf(' ') + 1).trim();
+      const unpinId = parseInt(idStr, 10);
+      if (isNaN(unpinId)) {
+        await ctx.sendMessage(ctx.chatId, 'Usage: /unpin <bookmark-number>');
+        break;
+      }
+      const bookmarks = await loadBookmarks(ctx.config, ctx.chatId);
+      const idx = bookmarks.findIndex((b) => b.id === unpinId);
+      if (idx === -1) {
+        await ctx.sendMessage(ctx.chatId, `Bookmark #${unpinId} not found.`);
+        break;
+      }
+      bookmarks.splice(idx, 1);
+      await saveBookmarks(ctx.config, ctx.chatId, bookmarks);
+      await ctx.sendMessage(ctx.chatId, `Bookmark #${unpinId} removed.`);
+      break;
+    }
     default:
       await ctx.sendMessage(ctx.chatId, `Unknown command: ${cmd}\nType /help for available commands.`);
   }
@@ -87,7 +163,7 @@ export async function handleCommand(
 
 function getWelcomeMessage(config: GatewayRuntimeConfig): string {
   const name = config.systemPrompt ? 'MoltBot' : 'OpenClaw Bot';
-  return [
+  const lines = [
     `Welcome to ${name}!`,
     '',
     "I'm your AI assistant. Send me a message and I'll respond.",
@@ -99,22 +175,67 @@ function getWelcomeMessage(config: GatewayRuntimeConfig): string {
     '/approve - Approve a pending action',
     '/deny    - Deny a pending action',
     '/pending - Show pending approval',
-  ].join('\n');
+    '',
+    'Bookmarks:',
+    '/pin <text> - Save a bookmark',
+    '/pins       - List bookmarks',
+    '/unpin <#>  - Remove a bookmark',
+    '/briefing   - Get a daily summary now',
+  ];
+  if (config.autonomous?.enabled) {
+    lines.push(
+      '',
+      'Autonomous:',
+      '/auto <goal>   - Start autonomous task',
+      '/auto_status   - Show active tasks',
+      '/kill [taskId] - Emergency stop',
+      '/auto_resume   - Re-enable after kill',
+    );
+  }
+  if (config.personas?.enabled) {
+    lines.push(
+      '',
+      'Personas & Voice:',
+      '/persona <id>  - Switch persona',
+      '/personas      - List all personas',
+      '/voice         - Toggle voice reply mode',
+    );
+  }
+  return lines.join('\n');
 }
 
 function getHelpMessage(): string {
   return [
     'Available commands:',
     '',
-    '/start   - Welcome message',
-    '/help    - This help text',
-    '/reset   - Clear conversation history',
-    '/info    - Show system info',
-    '/approve - Approve a pending action',
-    '/deny    - Deny a pending action',
-    '/pending - Show pending approval',
+    '/start        - Welcome message',
+    '/help         - This help text',
+    '/reset        - Clear conversation history',
+    '/info         - Show system info',
+    '/approve      - Approve a pending action',
+    '/deny         - Deny a pending action',
+    '/pending      - Show pending approval',
+    '',
+    'Autonomous:',
+    '/auto <goal>  - Start autonomous task',
+    '/auto_status  - Show active tasks',
+    '/tasks        - Show active tasks',
+    '/kill [id]    - Emergency stop (all or one)',
+    '/auto_resume  - Re-enable after kill switch',
+    '',
+    'Bookmarks:',
+    '/pin <text>   - Save a bookmark',
+    '/pins         - List bookmarks',
+    '/unpin <#>    - Remove a bookmark',
+    '/briefing     - Daily summary on demand',
+    '',
+    'Personas & Voice:',
+    '/persona <id>  - Switch persona',
+    '/personas      - List all personas',
+    '/voice         - Toggle voice reply mode',
     '',
     'Just type a message to chat!',
+    'In groups, @mention me or reply to my messages.',
   ].join('\n');
 }
 
@@ -123,7 +244,10 @@ function getInfoMessage(ctx: CommandContext): string {
   const msgCount = conv?.messages.length ?? 0;
   const routingMode = ctx.config.routing?.mode ?? 'single';
   const localModel = ctx.config.ollama?.model ?? 'none';
-  const cloudConfigured = ctx.config.anthropicApiKey ? 'yes' : 'no';
+  const cloudProviders: string[] = [];
+  if (ctx.config.anthropicApiKey) cloudProviders.push('Anthropic');
+  if (ctx.config.openaiApiKey) cloudProviders.push('OpenAI');
+  const cloudConfigured = cloudProviders.length > 0 ? cloudProviders.join(', ') : 'none';
 
   return [
     'System Info:',

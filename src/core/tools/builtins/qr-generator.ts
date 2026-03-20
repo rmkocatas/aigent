@@ -23,6 +23,10 @@ export const qrGeneratorDefinition: ToolDefinition = {
     },
     required: ['text'],
   },
+  routing: {
+    useWhen: ['User asks to generate or create a QR code'],
+    avoidWhen: ['User is asking about QR codes conceptually', 'User wants to read/scan a QR code'],
+  },
 };
 
 export const qrGeneratorHandler: ToolHandler = async (input) => {

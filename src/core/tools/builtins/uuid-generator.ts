@@ -17,6 +17,10 @@ export const uuidGeneratorDefinition: ToolDefinition = {
       count: { type: 'number', description: 'Number of UUIDs to generate (1-100, default 1).' },
     },
   },
+  routing: {
+    useWhen: ['User asks to generate a UUID or unique identifier'],
+    avoidWhen: ['User is asking about UUID formats or versions conceptually'],
+  },
 };
 
 export const uuidGeneratorHandler: ToolHandler = async (input) => {

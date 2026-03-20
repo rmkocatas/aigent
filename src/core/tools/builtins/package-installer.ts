@@ -2,11 +2,29 @@
 // OpenClaw Deploy — Package Installer Tool (with GitVerify)
 // ============================================================
 
-import { execSync } from 'node:child_process';
+import { execFileSync } from 'node:child_process';
+import { dirname, join } from 'node:path';
+import { existsSync } from 'node:fs';
 import type { ToolDefinition } from '../../../types/index.js';
 import type { ToolHandler } from '../registry.js';
 import { scanPackage } from '../../security/package-scanner.js';
 import type { PackageScanReport } from '../../security/package-scanner.js';
+
+/**
+ * Resolve npm to node + CLI script on Windows.
+ * On Windows, `npm` is a .cmd shim that `execFileSync` can't invoke directly
+ * without a shell. Instead, resolve to the actual npm-cli.js and run via node.
+ */
+function resolveNpm(): { cmd: string; prefix: string[] } {
+  if (process.platform === 'win32') {
+    const nodeDir = dirname(process.execPath);
+    const npmCliPath = join(nodeDir, 'node_modules', 'npm', 'bin', 'npm-cli.js');
+    if (existsSync(npmCliPath)) {
+      return { cmd: process.execPath, prefix: [npmCliPath] };
+    }
+  }
+  return { cmd: 'npm', prefix: [] };
+}
 
 export const installPackageDefinition: ToolDefinition = {
   name: 'install_package',
@@ -30,6 +48,10 @@ export const installPackageDefinition: ToolDefinition = {
       },
     },
     required: ['name', 'project_dir'],
+  },
+  routing: {
+    useWhen: ['User explicitly asks to install an npm package'],
+    avoidWhen: ['User is just asking about a package without wanting to install it', 'User wants to run code (use run_code instead)'],
   },
 };
 
@@ -106,8 +128,9 @@ export const installPackageHandler: ToolHandler = async (input, context) => {
   // NOTE: When ApprovalManager is wired in, approval will be required for CAUTION.
   // For now, we proceed directly with the install.
   try {
-    const devFlag = isDev ? ' -D' : '';
-    const cmd = `npm install${devFlag} ${packageName}`;
+    // Use execFileSync (not execSync) to avoid shell interpretation — prevents
+    // command injection via malicious package names (e.g., "lodash; rm -rf /")
+    const npmArgs = ['install', ...(isDev ? ['-D'] : []), packageName];
 
     const cleanEnv: Record<string, string> = {
       PATH: process.env['PATH'] ?? '',
@@ -116,7 +139,9 @@ export const installPackageHandler: ToolHandler = async (input, context) => {
       TMP: process.env['TMP'] ?? '/tmp',
     };
 
-    const output = execSync(cmd, {
+    // On Windows, resolve npm to node + npm-cli.js (execFileSync can't run .cmd shims)
+    const npm = resolveNpm();
+    const output = execFileSync(npm.cmd, [...npm.prefix, ...npmArgs], {
       cwd: projectDir,
       timeout: context.maxExecutionMs,
       env: cleanEnv,

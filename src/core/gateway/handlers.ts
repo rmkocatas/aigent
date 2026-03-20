@@ -3,21 +3,33 @@ import type { GatewayRuntimeConfig } from '../../types/index.js';
 import type { SessionStore } from './session-store.js';
 import type { TrainingDataStore } from '../training/data-collector.js';
 import type { ToolRegistry } from '../tools/registry.js';
+import type { SkillLoader } from '../services/skill-loader.js';
+import type { MemoryEngine } from '../services/memory/memory-engine.js';
+import type { CostTracker } from '../services/cost-tracker.js';
 import { processChatMessage } from './chat-pipeline.js';
 import { initSSE, writeSSE, endSSE, errorSSE } from './sse.js';
 import { WEBCHAT_HTML } from './webchat.js';
+import { redactSensitive } from '../services/log-redactor.js';
 
 export interface HandlerDeps {
   config: GatewayRuntimeConfig;
   sessions: SessionStore;
   trainingStore: TrainingDataStore | null;
   toolRegistry?: ToolRegistry;
+  skillLoader?: SkillLoader;
+  memoryEngine?: MemoryEngine;
+  strategyEngine?: import('../services/strategies/strategy-engine.js').StrategyEngine;
+  costTracker?: CostTracker;
+  responseCache?: import('./response-cache.js').ResponseCache;
+  pipelineHooks?: import('../services/pipeline-hooks.js').PipelineHooks;
+  personaManager?: import('../services/persona-manager.js').PersonaManager;
+  documentMemory?: import('../services/document-memory/document-memory.js').DocumentMemoryEngine;
 }
 
 const MAX_BODY_SIZE = 100_000; // 100KB
 const MAX_MESSAGE_LENGTH = 32_000; // 32KB — prevents token exhaustion
 
-function readBody(req: IncomingMessage): Promise<string> {
+export function readBody(req: IncomingMessage): Promise<string> {
   return new Promise((resolve, reject) => {
     const chunks: Buffer[] = [];
     let totalSize = 0;
@@ -110,6 +122,14 @@ export async function handleChat(
           sessions: deps.sessions,
           trainingStore: deps.trainingStore,
           toolRegistry: deps.toolRegistry,
+          skillLoader: deps.skillLoader,
+          memoryEngine: deps.memoryEngine,
+          strategyEngine: deps.strategyEngine,
+          costTracker: deps.costTracker,
+          responseCache: deps.responseCache,
+          pipelineHooks: deps.pipelineHooks,
+          personaManager: deps.personaManager,
+          documentMemory: deps.documentMemory,
         },
         {
           onMeta: (meta) =>
@@ -127,14 +147,15 @@ export async function handleChat(
 
       endSSE(res);
     } catch (err) {
-      errorSSE(res, (err as Error).message);
+      errorSSE(res, redactSensitive((err as Error).message));
     }
   } catch (err) {
+    const safeMsg = redactSensitive((err as Error).message);
     if (!res.headersSent) {
       res.writeHead(500, { 'Content-Type': 'application/json' });
-      res.end(JSON.stringify({ error: (err as Error).message }));
+      res.end(JSON.stringify({ error: safeMsg }));
     } else {
-      errorSSE(res, (err as Error).message);
+      errorSSE(res, safeMsg);
     }
   }
 }

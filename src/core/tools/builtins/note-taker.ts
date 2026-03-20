@@ -55,6 +55,10 @@ export const noteAddDefinition: ToolDefinition = {
     },
     required: ['content'],
   },
+  routing: {
+    useWhen: ['User asks to save, create, or add a note'],
+    avoidWhen: ['User wants to search notes (use note_search instead)', 'User wants to use persistent memory (use memory_write instead)'],
+  },
 };
 
 export const noteAddHandler: ToolHandler = async (input, context) => {
@@ -96,6 +100,10 @@ export const noteListDefinition: ToolDefinition = {
       tag: { type: 'string', description: 'Filter by tag name.' },
     },
   },
+  routing: {
+    useWhen: ['User asks to see, list, or browse their notes'],
+    avoidWhen: ['User wants to search for a specific note (use note_search instead)'],
+  },
 };
 
 export const noteListHandler: ToolHandler = async (input, context) => {
@@ -129,6 +137,10 @@ export const noteSearchDefinition: ToolDefinition = {
     },
     required: ['query'],
   },
+  routing: {
+    useWhen: ['User wants to find a specific note by keyword or tag'],
+    avoidWhen: ['User wants to see all notes (use note_list instead)'],
+  },
 };
 
 export const noteSearchHandler: ToolHandler = async (input, context) => {
@@ -159,6 +171,10 @@ export const noteDeleteDefinition: ToolDefinition = {
       note_id: { type: 'string', description: 'The note ID to delete.' },
     },
     required: ['note_id'],
+  },
+  routing: {
+    useWhen: ['User wants to delete or remove a specific note'],
+    avoidWhen: ['User just wants to view notes, not delete them'],
   },
 };
 

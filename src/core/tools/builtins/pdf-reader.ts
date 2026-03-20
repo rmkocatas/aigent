@@ -4,7 +4,6 @@
 
 import { readFile } from 'node:fs/promises';
 import { resolve, normalize, isAbsolute } from 'node:path';
-import { PDFParse } from 'pdf-parse';
 import type { ToolDefinition } from '../../../types/index.js';
 import type { ToolHandler } from '../registry.js';
 
@@ -30,13 +29,17 @@ function validatePath(filePath: string, workspaceDir: string): string {
 
 export const pdfReaderDefinition: ToolDefinition = {
   name: 'pdf_reader',
-  description: 'Extract text from a PDF file in the workspace. This tool is restricted and must be explicitly allowed.',
+  description: 'Extract text from a PDF file in the workspace. Supports multi-page documents.',
   parameters: {
     type: 'object',
     properties: {
       path: { type: 'string', description: 'Relative path to the PDF file within the workspace.' },
     },
     required: ['path'],
+  },
+  routing: {
+    useWhen: ['User asks to read or extract text from a PDF file'],
+    avoidWhen: ['User is asking about PDFs conceptually, not reading a specific file'],
   },
 };
 
@@ -62,19 +65,25 @@ export const pdfReaderHandler: ToolHandler = async (input, context) => {
     throw new Error('File does not appear to be a valid PDF');
   }
 
+  const { PDFParse } = await import('pdf-parse');
+
   const parser = new PDFParse({ data: new Uint8Array(buffer) });
-  const result = await parser.getText();
-  const info = await parser.getInfo();
-  await parser.destroy();
 
-  let text = result.text?.trim() ?? '';
-  const pageCount = info.pages ?? result.pages?.length ?? 0;
+  try {
+    const textResult = await parser.getText();
+    const infoResult = await parser.getInfo();
 
-  if (!text) return 'PDF contains no extractable text (may be image-based).';
+    let text = (textResult?.text ?? '').trim();
+    const pageCount = infoResult?.pages ?? textResult?.pages?.length ?? 0;
 
-  if (text.length > MAX_OUTPUT_SIZE) {
-    text = text.slice(0, MAX_OUTPUT_SIZE) + '\n\n[Truncated — PDF text exceeds 50KB]';
+    if (!text) return 'PDF contains no extractable text (may be image-based).';
+
+    if (text.length > MAX_OUTPUT_SIZE) {
+      text = text.slice(0, MAX_OUTPUT_SIZE) + '\n\n[Truncated — PDF text exceeds 50KB]';
+    }
+
+    return `Pages: ${pageCount}\n\n${text}`;
+  } finally {
+    try { await parser.destroy(); } catch { /* ignore */ }
   }
-
-  return `Pages: ${pageCount}\n\n${text}`;
 };

@@ -40,6 +40,10 @@ export const dictionaryDefinition: ToolDefinition = {
     },
     required: ['word'],
   },
+  routing: {
+    useWhen: ['User asks for the definition or meaning of a word', 'User wants synonyms, pronunciation, or etymology'],
+    avoidWhen: ['User is asking a general knowledge question, not about a specific word'],
+  },
 };
 
 export const dictionaryHandler: ToolHandler = async (input) => {

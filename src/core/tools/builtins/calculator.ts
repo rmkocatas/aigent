@@ -18,6 +18,10 @@ export const calculatorDefinition: ToolDefinition = {
     },
     required: ['expression'],
   },
+  routing: {
+    useWhen: ['User asks to calculate, compute, or evaluate a math expression', 'User needs precise arithmetic'],
+    avoidWhen: ['User is asking for a rough estimate or ballpark figure', 'The question is conceptual, not computational'],
+  },
 };
 
 // Allowed identifiers for safe math evaluation

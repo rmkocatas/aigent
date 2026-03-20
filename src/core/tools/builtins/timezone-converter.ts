@@ -17,6 +17,10 @@ export const timezoneConverterDefinition: ToolDefinition = {
     },
     required: ['time', 'from_timezone', 'to_timezone'],
   },
+  routing: {
+    useWhen: ['User asks to convert a time between timezones', 'User wants to know what time it is in another timezone'],
+    avoidWhen: ['User just wants the current time (use current_datetime instead)'],
+  },
 };
 
 function formatInTimezone(date: Date, tz: string): string {

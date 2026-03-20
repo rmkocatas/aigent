@@ -2,7 +2,7 @@ import type { OllamaConfig, StreamChunk, ToolDefinition } from '../../types/inde
 
 export async function* streamOllamaChat(
   config: OllamaConfig,
-  messages: Array<{ role: string; content: string }>,
+  messages: Array<{ role: string; content: string; images?: string[]; tool_calls?: Array<{ function: { name: string; arguments: Record<string, unknown> } }> }>,
   signal?: AbortSignal,
   tools?: ToolDefinition[],
 ): AsyncGenerator<StreamChunk> {
@@ -18,14 +18,31 @@ export async function* streamOllamaChat(
     },
   }));
 
-  const body = JSON.stringify({
-    model: config.model,
-    messages,
-    stream: true,
-    ...(ollamaTools && ollamaTools.length > 0 ? { tools: ollamaTools } : {}),
+  // Build messages with images support for multimodal models (e.g. Qwen 3.5)
+  const ollamaMessages = messages.map((m) => {
+    const msg: Record<string, unknown> = { role: m.role, content: m.content };
+    if (m.images && m.images.length > 0) msg.images = m.images;
+    if (m.tool_calls) msg.tool_calls = m.tool_calls;
+    return msg;
   });
 
-  const effectiveSignal = signal ?? AbortSignal.timeout(120_000);
+  // Build Ollama options: num_ctx, num_predict, plus any extra options from config
+  const options: Record<string, unknown> = {
+    ...(config.extraOptions ?? {}),
+    ...(config.numCtx ? { num_ctx: config.numCtx } : {}),
+    ...(config.numPredict ? { num_predict: config.numPredict } : {}),
+  };
+
+  const body = JSON.stringify({
+    model: config.model,
+    messages: ollamaMessages,
+    stream: true,
+    ...(ollamaTools && ollamaTools.length > 0 ? { tools: ollamaTools } : {}),
+    ...(Object.keys(options).length > 0 ? { options } : {}),
+    ...(config.keepAlive ? { keep_alive: config.keepAlive } : {}),
+  });
+
+  const effectiveSignal = signal ?? AbortSignal.timeout(300_000);
 
   const response = await fetch(url, {
     method: 'POST',
@@ -45,6 +62,56 @@ export async function* streamOllamaChat(
   const reader = response.body.getReader();
   const decoder = new TextDecoder();
   let buffer = '';
+
+  // Track <think>...</think> blocks from reasoning models (e.g. Qwen3) and suppress them
+  let insideThink = false;
+  let thinkBuffer = '';
+
+  /** Strip think tags from a content chunk, buffering partial tags. Returns content to yield. */
+  function filterThinkContent(raw: string): string {
+    let result = '';
+    const combined = thinkBuffer + raw;
+    thinkBuffer = '';
+
+    let i = 0;
+    while (i < combined.length) {
+      if (insideThink) {
+        const closeIdx = combined.indexOf('</think>', i);
+        if (closeIdx === -1) {
+          // Still inside think block, check for partial closing tag at end
+          if (combined.length - i < 8 && combined.slice(i).startsWith('</think'.slice(0, combined.length - i))) {
+            thinkBuffer = combined.slice(i);
+          }
+          break;
+        }
+        insideThink = false;
+        i = closeIdx + 8; // skip past </think>
+      } else {
+        const openIdx = combined.indexOf('<think>', i);
+        if (openIdx === -1) {
+          // No think tag — check for partial opening tag at the end
+          const remaining = combined.slice(i);
+          let partialMatch = 0;
+          for (let k = 1; k <= Math.min(7, remaining.length); k++) {
+            if ('<think>'.startsWith(remaining.slice(remaining.length - k))) {
+              partialMatch = k;
+            }
+          }
+          if (partialMatch > 0) {
+            result += remaining.slice(0, remaining.length - partialMatch);
+            thinkBuffer = remaining.slice(remaining.length - partialMatch);
+          } else {
+            result += remaining;
+          }
+          break;
+        }
+        result += combined.slice(i, openIdx);
+        insideThink = true;
+        i = openIdx + 7; // skip past <think>
+      }
+    }
+    return result;
+  }
 
   try {
     while (true) {
@@ -91,8 +158,11 @@ export async function* streamOllamaChat(
             continue;
           }
 
+          const rawContent = parsed.message?.content ?? '';
+          const filtered = filterThinkContent(rawContent);
+
           yield {
-            content: parsed.message?.content ?? '',
+            content: filtered,
             done: parsed.done ?? false,
             provider: 'ollama',
             model: config.model,
@@ -108,8 +178,10 @@ export async function* streamOllamaChat(
     if (buffer.trim()) {
       try {
         const parsed = JSON.parse(buffer);
+        const rawContent = parsed.message?.content ?? '';
+        const filtered = filterThinkContent(rawContent);
         yield {
-          content: parsed.message?.content ?? '',
+          content: filtered,
           done: parsed.done ?? false,
           provider: 'ollama',
           model: config.model,

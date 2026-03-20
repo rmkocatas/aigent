@@ -23,6 +23,10 @@ export const passwordGeneratorDefinition: ToolDefinition = {
       include_symbols: { type: 'string', description: 'Include symbols.', enum: ['true', 'false'] },
     },
   },
+  routing: {
+    useWhen: ['User asks to generate a password or passphrase'],
+    avoidWhen: ['User is asking about password security concepts, not generation'],
+  },
 };
 
 export const passwordGeneratorHandler: ToolHandler = async (input) => {

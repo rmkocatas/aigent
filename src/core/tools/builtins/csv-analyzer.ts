@@ -59,6 +59,10 @@ export const csvAnalyzerDefinition: ToolDefinition = {
     },
     required: ['csv'],
   },
+  routing: {
+    useWhen: ['User provides CSV data to analyze, parse, or summarize'],
+    avoidWhen: ['User is asking about CSV format concepts without providing data'],
+  },
 };
 
 export const csvAnalyzerHandler: ToolHandler = async (input) => {

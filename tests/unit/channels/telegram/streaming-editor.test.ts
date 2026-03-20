@@ -21,6 +21,11 @@ function calledUrl(call: unknown[]): string {
   return call[0] as string;
 }
 
+// Chunks long enough to exceed the minCharsBeforeFirstSend (40) threshold
+const FIRST_CHUNK = 'This is a sufficiently long first chunk for streaming.'; // 54 chars
+// Enough new chars (80+) to trigger a debounced edit
+const SECOND_CHUNK = ' Here is additional content that should push us past the minimum character threshold for edits.'; // 95 chars
+
 // ---------------------------------------------------------------------------
 // Tests
 // ---------------------------------------------------------------------------
@@ -42,15 +47,15 @@ describe('TelegramStreamingEditor', () => {
   });
 
   // -----------------------------------------------------------------------
-  // First chunk sends a new message
+  // First chunk sends a new message (once buffer exceeds 40 chars)
   // -----------------------------------------------------------------------
 
-  it('sends a new message on the first chunk and captures message_id', async () => {
+  it('sends a new message once buffer exceeds minCharsBeforeFirstSend', async () => {
     const fetchMock = mockFetch(99);
     globalThis.fetch = fetchMock as unknown as typeof fetch;
 
     const editor = new TelegramStreamingEditor(CHAT_ID, BOT_TOKEN);
-    await editor.addChunk('Hello');
+    await editor.addChunk(FIRST_CHUNK);
 
     expect(fetchMock).toHaveBeenCalledTimes(1);
 
@@ -59,34 +64,48 @@ describe('TelegramStreamingEditor', () => {
 
     const body = parsedBody(fetchMock.mock.calls[0]);
     expect(body.chat_id).toBe(CHAT_ID);
-    expect(body.text).toBe('Hello');
+    expect(body.text).toBe(FIRST_CHUNK);
+  });
+
+  it('buffers short chunks until threshold is reached', async () => {
+    const fetchMock = mockFetch(99);
+    globalThis.fetch = fetchMock as unknown as typeof fetch;
+
+    const editor = new TelegramStreamingEditor(CHAT_ID, BOT_TOKEN);
+
+    // Short chunk — below 40 chars, should be buffered
+    await editor.addChunk('Hello');
+    expect(fetchMock).toHaveBeenCalledTimes(0);
+
+    // Add more to exceed threshold
+    await editor.addChunk(' world, this is a longer message now!!!');
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+
+    const body = parsedBody(fetchMock.mock.calls[0]);
+    expect(body.text).toBe('Hello world, this is a longer message now!!!');
   });
 
   // -----------------------------------------------------------------------
-  // Subsequent chunks trigger debounced edit
+  // Subsequent chunks trigger debounced edit (after 80+ new chars)
   // -----------------------------------------------------------------------
 
-  it('debounces editMessageText for subsequent chunks', async () => {
+  it('debounces editMessageText for subsequent chunks with enough content', async () => {
     const fetchMock = mockFetch(42);
     globalThis.fetch = fetchMock as unknown as typeof fetch;
 
     const editor = new TelegramStreamingEditor(CHAT_ID, BOT_TOKEN);
 
     // First chunk — sends message
-    await editor.addChunk('Hello');
+    await editor.addChunk(FIRST_CHUNK);
     expect(fetchMock).toHaveBeenCalledTimes(1);
 
-    // Second chunk — schedules debounced edit
-    await editor.addChunk(' world');
+    // Second chunk with 80+ new chars — schedules debounced edit
+    await editor.addChunk(SECOND_CHUNK);
     // No immediate edit call
     expect(fetchMock).toHaveBeenCalledTimes(1);
 
-    // Third chunk before timer fires — timer resets
-    await editor.addChunk('!');
-    expect(fetchMock).toHaveBeenCalledTimes(1);
-
-    // Advance past the debounce interval
-    await vi.advanceTimersByTimeAsync(1600);
+    // Advance past the debounce interval (3000ms)
+    await vi.advanceTimersByTimeAsync(3100);
 
     expect(fetchMock).toHaveBeenCalledTimes(2);
 
@@ -96,7 +115,25 @@ describe('TelegramStreamingEditor', () => {
     const body = parsedBody(fetchMock.mock.calls[1]);
     expect(body.chat_id).toBe(CHAT_ID);
     expect(body.message_id).toBe(42);
-    expect(body.text).toBe('Hello world!');
+    expect(body.text).toBe(FIRST_CHUNK + SECOND_CHUNK);
+  });
+
+  it('does not schedule edit for small incremental chunks', async () => {
+    const fetchMock = mockFetch(42);
+    globalThis.fetch = fetchMock as unknown as typeof fetch;
+
+    const editor = new TelegramStreamingEditor(CHAT_ID, BOT_TOKEN);
+
+    await editor.addChunk(FIRST_CHUNK);
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+
+    // Small chunks — below 80 new chars, no edit scheduled
+    await editor.addChunk(' short');
+    await editor.addChunk(' bits');
+
+    await vi.advanceTimersByTimeAsync(5000);
+    // Only the initial sendMessage, no edits
+    expect(fetchMock).toHaveBeenCalledTimes(1);
   });
 
   // -----------------------------------------------------------------------
@@ -109,8 +146,8 @@ describe('TelegramStreamingEditor', () => {
 
     const editor = new TelegramStreamingEditor(CHAT_ID, BOT_TOKEN);
 
-    await editor.addChunk('Hello');
-    await editor.addChunk(' world');
+    await editor.addChunk(FIRST_CHUNK);
+    await editor.addChunk(' more');
 
     // Clear call count after setup
     fetchMock.mockClear();
@@ -123,7 +160,28 @@ describe('TelegramStreamingEditor', () => {
     expect(url).toContain('/editMessageText');
 
     const body = parsedBody(fetchMock.mock.calls[0]);
-    expect(body.text).toBe('Hello world');
+    expect(body.text).toBe(FIRST_CHUNK + ' more');
+  });
+
+  it('finalize sends short response as new message if never sent', async () => {
+    const fetchMock = mockFetch(42);
+    globalThis.fetch = fetchMock as unknown as typeof fetch;
+
+    const editor = new TelegramStreamingEditor(CHAT_ID, BOT_TOKEN);
+
+    // Short text — below threshold, never sent
+    await editor.addChunk('Hi!');
+    expect(fetchMock).toHaveBeenCalledTimes(0);
+
+    await editor.finalize();
+
+    // finalize should send the buffered text as a new message
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    const url = calledUrl(fetchMock.mock.calls[0]);
+    expect(url).toContain('/sendMessage');
+
+    const body = parsedBody(fetchMock.mock.calls[0]);
+    expect(body.text).toBe('Hi!');
   });
 
   it('finalize clears any pending timer', async () => {
@@ -132,15 +190,15 @@ describe('TelegramStreamingEditor', () => {
 
     const editor = new TelegramStreamingEditor(CHAT_ID, BOT_TOKEN);
 
-    await editor.addChunk('Hello');
-    await editor.addChunk(' world'); // Schedules a timer
+    await editor.addChunk(FIRST_CHUNK);
+    await editor.addChunk(SECOND_CHUNK); // Schedules a timer
 
     await editor.finalize();
 
     fetchMock.mockClear();
 
     // Advancing timers should not cause additional calls
-    await vi.advanceTimersByTimeAsync(3000);
+    await vi.advanceTimersByTimeAsync(5000);
     expect(fetchMock).toHaveBeenCalledTimes(0);
   });
 
@@ -154,7 +212,7 @@ describe('TelegramStreamingEditor', () => {
 
     const editor = new TelegramStreamingEditor(CHAT_ID, BOT_TOKEN);
 
-    // First chunk — sends initial message
+    // First chunk — sends initial message (well above 40 char threshold)
     const longText = 'x'.repeat(3900);
     await editor.addChunk(longText);
     expect(fetchMock).toHaveBeenCalledTimes(1);
@@ -164,7 +222,6 @@ describe('TelegramStreamingEditor', () => {
     await editor.addChunk('y'.repeat(200));
 
     // Should have called editMessageText to finalize the current message
-    // (the addChunk detects overflow and flushes)
     await vi.advanceTimersByTimeAsync(100);
     expect(fetchMock).toHaveBeenCalledTimes(2); // sendMessage + editMessageText
 
@@ -173,13 +230,13 @@ describe('TelegramStreamingEditor', () => {
 
     // Now sending another chunk should create a new message
     fetchMock.mockClear();
-    // Reset mock to return a new message_id
     fetchMock.mockResolvedValue({
       ok: true,
       json: () => Promise.resolve({ result: { message_id: 43 } }),
     });
 
-    await editor.addChunk('New message content');
+    // Chunk must exceed minCharsBeforeFirstSend (40) for new message
+    await editor.addChunk('New message content that is long enough to send.');
     expect(fetchMock).toHaveBeenCalledTimes(1);
 
     const newUrl = calledUrl(fetchMock.mock.calls[0]);
@@ -200,7 +257,7 @@ describe('TelegramStreamingEditor', () => {
     const editor = new TelegramStreamingEditor(CHAT_ID, BOT_TOKEN);
 
     // Should not throw
-    await expect(editor.addChunk('Hello')).resolves.toBeUndefined();
+    await expect(editor.addChunk(FIRST_CHUNK)).resolves.toBeUndefined();
   });
 
   it('handles editMessageText failure gracefully', async () => {
@@ -221,11 +278,11 @@ describe('TelegramStreamingEditor', () => {
 
     const editor = new TelegramStreamingEditor(CHAT_ID, BOT_TOKEN);
 
-    await editor.addChunk('Hello');
-    await editor.addChunk(' world');
+    await editor.addChunk(FIRST_CHUNK);
+    await editor.addChunk(SECOND_CHUNK);
 
-    // Advance timer to trigger edit
-    await vi.advanceTimersByTimeAsync(1600);
+    // Advance timer to trigger edit (3000ms interval)
+    await vi.advanceTimersByTimeAsync(3100);
 
     // Should not throw — error is caught
     expect(fetchMock).toHaveBeenCalledTimes(2);
@@ -240,7 +297,7 @@ describe('TelegramStreamingEditor', () => {
     globalThis.fetch = fetchMock as unknown as typeof fetch;
 
     const editor = new TelegramStreamingEditor(CHAT_ID, BOT_TOKEN);
-    await editor.addChunk('Hello');
+    await editor.addChunk(FIRST_CHUNK);
 
     await editor.finalize();
     fetchMock.mockClear();
@@ -259,7 +316,7 @@ describe('TelegramStreamingEditor', () => {
     globalThis.fetch = fetchMock as unknown as typeof fetch;
 
     const editor = new TelegramStreamingEditor(CHAT_ID, BOT_TOKEN);
-    await editor.addChunk('Hello');
+    await editor.addChunk(FIRST_CHUNK);
     await editor.finalize();
 
     fetchMock.mockClear();

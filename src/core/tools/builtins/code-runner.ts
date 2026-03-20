@@ -30,7 +30,7 @@ const MAX_CODE_LENGTH = 10_000;
 
 export const codeRunnerDefinition: ToolDefinition = {
   name: 'run_code',
-  description: 'Execute JavaScript or Python code in a sandboxed subprocess. JS uses Node.js Permission Model: filesystem writes restricted to workspace, no child processes, no worker threads. Environment is stripped of secrets. Returns stdout/stderr (max 32KB). This tool is restricted and must be explicitly allowed.',
+  description: 'Execute JavaScript or Python code in a sandboxed subprocess. JS uses Node.js Permission Model: filesystem writes restricted to workspace, no child processes, no worker threads. Environment is stripped of secrets. Returns stdout/stderr (max 32KB).',
   parameters: {
     type: 'object',
     properties: {
@@ -45,6 +45,10 @@ export const codeRunnerDefinition: ToolDefinition = {
       },
     },
     required: ['language', 'code'],
+  },
+  routing: {
+    useWhen: ['User needs to run code for computation, data processing, or testing', 'User asks to execute a script or snippet'],
+    avoidWhen: ['User is asking a simple question you can answer directly', 'User just wants an explanation of code, not execution'],
   },
 };
 
@@ -74,6 +78,9 @@ export const codeRunnerHandler: ToolHandler = async (input, context) => {
     // Node module resolution needs these on Windows
     APPDATA: process.env.APPDATA ?? '',
     LOCALAPPDATA: process.env.LOCALAPPDATA ?? '',
+    // Force UTF-8 for Python on Windows (otherwise defaults to cp1252, breaking emoji/unicode)
+    PYTHONIOENCODING: 'utf-8',
+    PYTHONUTF8: '1',
   };
 
   let cmd: string;
@@ -94,8 +101,9 @@ export const codeRunnerHandler: ToolHandler = async (input, context) => {
   } else if (language === 'python') {
     cmd = 'python';
     args = [
-      '-I',  // Isolated mode: no site-packages manipulation, ignore PYTHON* env vars
-      '-u',  // Unbuffered output
+      '-I',        // Isolated mode: no site-packages manipulation, ignore PYTHON* env vars
+      '-X', 'utf8', // Force UTF-8 mode (works even with -I, unlike PYTHONIOENCODING env var)
+      '-u',        // Unbuffered output
       '-c', code,
     ];
   } else {

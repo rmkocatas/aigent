@@ -17,6 +17,10 @@ export const datetimeDefinition: ToolDefinition = {
       },
     },
   },
+  routing: {
+    useWhen: ['User asks what time or date it is', 'User needs to know the current time in a specific timezone'],
+    avoidWhen: ['User is asking about a historical date or event'],
+  },
 };
 
 export const datetimeHandler: ToolHandler = async (input) => {

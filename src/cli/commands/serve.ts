@@ -43,6 +43,9 @@ export function createServeCommand(): Command {
         if (config.anthropicApiKey) {
           console.log(`  ${chalk.dim('Anthropic:')} configured`);
         }
+        if (config.openaiApiKey) {
+          console.log(`  ${chalk.dim('OpenAI:')}    configured`);
+        }
         if (config.routing) {
           console.log(`  ${chalk.dim('Routing:')}   ${config.routing.mode}`);
         }

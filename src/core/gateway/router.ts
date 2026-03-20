@@ -1,11 +1,11 @@
 import type { IncomingMessage, ServerResponse } from 'node:http';
 import { authenticateRequest } from './auth.js';
 import { handleHealth, handleWebchat, handleConfig, handleChat } from './handlers.js';
-import type { HandlerDeps } from './handlers.js';
+import { handleAdminRoute, type AdminHandlerDeps } from './admin-handlers.js';
 import type { WhatsAppBot } from '../channels/whatsapp/bot.js';
 import { verifyWhatsAppWebhook, handleWhatsAppWebhook } from '../channels/whatsapp/webhook-handler.js';
 
-export interface RouterDeps extends HandlerDeps {
+export interface RouterDeps extends AdminHandlerDeps {
   whatsappBot?: WhatsAppBot | null;
 }
 
@@ -25,7 +25,7 @@ export function createRequestHandler(deps: RouterDeps) {
       res.setHeader('Access-Control-Allow-Origin', origin);
     }
     // No Access-Control-Allow-Origin header if origin doesn't match = browser blocks it
-    res.setHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
+    res.setHeader('Access-Control-Allow-Methods', 'GET, POST, PUT, PATCH, DELETE, OPTIONS');
     res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization');
 
     if (method === 'OPTIONS') {
@@ -34,8 +34,8 @@ export function createRequestHandler(deps: RouterDeps) {
       return;
     }
 
-    // Public routes
-    if (method === 'GET' && path === '/health') {
+    // Public routes — liveness/readiness health checks
+    if (method === 'GET' && (path === '/health' || path === '/healthz' || path === '/ready' || path === '/readyz')) {
       handleHealth(req, res);
       return;
     }
@@ -72,6 +72,17 @@ export function createRequestHandler(deps: RouterDeps) {
 
     if (method === 'POST' && path === '/api/chat') {
       handleChat(req, res, deps);
+      return;
+    }
+
+    // Admin routes
+    if (path.startsWith('/api/admin/')) {
+      handleAdminRoute(method, path, req, res, deps).catch((err) => {
+        if (!res.headersSent) {
+          res.writeHead(500, { 'Content-Type': 'application/json' });
+          res.end(JSON.stringify({ error: (err as Error).message }));
+        }
+      });
       return;
     }
 

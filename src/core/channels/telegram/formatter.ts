@@ -3,18 +3,31 @@
 // ============================================================
 
 // Characters that must be escaped in MarkdownV2 (outside code blocks)
-const SPECIAL_CHARS = /([_*\[\]()~`>#+\-=|{}.!\\])/g;
+// Note: `>` is excluded here — handled separately for blockquote support
+const SPECIAL_CHARS = /([_*\[\]()~`#+\-=|{}.!\\])/g;
 
 /**
  * Escape special characters for Telegram MarkdownV2,
- * preserving code blocks and inline code.
+ * preserving code blocks, inline code, and blockquotes.
  */
 export function escapeMarkdownV2(text: string): string {
   const segments = splitByCode(text);
   return segments
-    .map((seg) =>
-      seg.isCode ? seg.text : seg.text.replace(SPECIAL_CHARS, '\\$1'),
-    )
+    .map((seg) => {
+      if (seg.isCode) return seg.text;
+      // Process line-by-line to handle blockquotes
+      return seg.text.split('\n').map((line) => {
+        const bqMatch = line.match(/^(>\s*)+/);
+        if (bqMatch) {
+          // Blockquote line: preserve `>` prefix, escape the rest
+          const content = line.slice(bqMatch[0].length);
+          // Telegram MarkdownV2 blockquote: `>` followed by escaped text (no space)
+          return '>' + content.replace(SPECIAL_CHARS, '\\$1');
+        }
+        // Escape `>` in non-blockquote lines
+        return line.replace(SPECIAL_CHARS, '\\$1').replace(/>/g, '\\>');
+      }).join('\n');
+    })
     .join('');
 }
 

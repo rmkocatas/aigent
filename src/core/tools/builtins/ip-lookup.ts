@@ -48,6 +48,10 @@ export const ipLookupDefinition: ToolDefinition = {
     },
     required: ['ip'],
   },
+  routing: {
+    useWhen: ['User provides an IP address and wants geolocation or ISP info'],
+    avoidWhen: ['User is asking about networking concepts, not a specific IP'],
+  },
 };
 
 export const ipLookupHandler: ToolHandler = async (input) => {

@@ -69,6 +69,10 @@ export const pomodoroStartDefinition: ToolDefinition = {
       task_name: { type: 'string', description: 'Name of the task to focus on.' },
     },
   },
+  routing: {
+    useWhen: ['User wants to start a focus session or pomodoro timer'],
+    avoidWhen: ['User is asking about pomodoro technique conceptually'],
+  },
 };
 
 export const pomodoroStartHandler: ToolHandler = async (input, context) => {
@@ -111,6 +115,9 @@ export const pomodoroStatusDefinition: ToolDefinition = {
     type: 'object',
     properties: {},
   },
+  routing: {
+    useWhen: ['User asks about their current focus session or time remaining'],
+  },
 };
 
 export const pomodoroStatusHandler: ToolHandler = async (_input, context) => {
@@ -141,6 +148,9 @@ export const pomodoroStopDefinition: ToolDefinition = {
   parameters: {
     type: 'object',
     properties: {},
+  },
+  routing: {
+    useWhen: ['User wants to stop or end their current focus session'],
   },
 };
 

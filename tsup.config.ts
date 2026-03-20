@@ -9,6 +9,6 @@ export default defineConfig({
   dts: true,
   sourcemap: true,
   banner: {
-    js: '#!/usr/bin/env node',
+    js: "import { createRequire } from 'module';\nconst require = createRequire(import.meta.url);",
   },
 });

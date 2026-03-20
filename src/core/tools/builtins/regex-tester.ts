@@ -21,6 +21,10 @@ export const regexTesterDefinition: ToolDefinition = {
     },
     required: ['pattern', 'input'],
   },
+  routing: {
+    useWhen: ['User wants to test a regex pattern against a string', 'User asks to validate if a regex matches'],
+    avoidWhen: ['User is asking how to write a regex (help them directly instead)'],
+  },
 };
 
 export const regexTesterHandler: ToolHandler = async (input) => {

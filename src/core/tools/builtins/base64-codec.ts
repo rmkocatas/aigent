@@ -22,6 +22,10 @@ export const base64CodecDefinition: ToolDefinition = {
     },
     required: ['input', 'operation'],
   },
+  routing: {
+    useWhen: ['User asks to encode or decode a base64 string'],
+    avoidWhen: ['User is asking about base64 as a concept'],
+  },
 };
 
 export const base64CodecHandler: ToolHandler = async (input) => {

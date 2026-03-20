@@ -38,6 +38,10 @@ export const weatherDefinition: ToolDefinition = {
       longitude: { type: 'number', description: 'Longitude (use instead of city).' },
     },
   },
+  routing: {
+    useWhen: ['User asks about current weather conditions in a location'],
+    avoidWhen: ['User is asking about historical weather or climate trends', 'User is asking about weather concepts or phenomena'],
+  },
 };
 
 export const weatherHandler: ToolHandler = async (input) => {

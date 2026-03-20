@@ -23,6 +23,10 @@ export const jsonFormatterDefinition: ToolDefinition = {
     },
     required: ['json', 'operation'],
   },
+  routing: {
+    useWhen: ['User provides JSON to format, validate, or pretty-print'],
+    avoidWhen: ['User is asking about JSON syntax or concepts'],
+  },
 };
 
 export const jsonFormatterHandler: ToolHandler = async (input) => {

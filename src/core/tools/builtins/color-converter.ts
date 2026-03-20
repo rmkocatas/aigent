@@ -126,6 +126,10 @@ export const colorConverterDefinition: ToolDefinition = {
     },
     required: ['color', 'to_format'],
   },
+  routing: {
+    useWhen: ['User asks to convert a color between formats (hex, RGB, HSL)'],
+    avoidWhen: ['User is asking about color theory or design choices'],
+  },
 };
 
 export const colorConverterHandler: ToolHandler = async (input) => {

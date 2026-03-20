@@ -79,6 +79,10 @@ export const cronParserDefinition: ToolDefinition = {
     },
     required: ['expression'],
   },
+  routing: {
+    useWhen: ['User provides a cron expression to parse or explain', 'User asks when a cron schedule will next run'],
+    avoidWhen: ['User is asking how to write a cron expression (help them directly)'],
+  },
 };
 
 export const cronParserHandler: ToolHandler = async (input) => {

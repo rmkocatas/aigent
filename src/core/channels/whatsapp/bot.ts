@@ -5,11 +5,13 @@
 import type {
   GatewayRuntimeConfig,
   WhatsAppMessage,
+  GeneratedImage,
 } from '../../../types/index.js';
 import type { SessionStore } from '../../gateway/session-store.js';
 import type { TrainingDataStore } from '../../training/data-collector.js';
 import type { ToolRegistry } from '../../tools/registry.js';
 import type { ApprovalManager } from '../../services/approval-manager.js';
+import type { SkillLoader } from '../../services/skill-loader.js';
 import { processChatMessage } from '../../gateway/chat-pipeline.js';
 import { handleCommand } from './commands.js';
 import { formatResponse, splitMessage, stripMarkdown } from './formatter.js';
@@ -33,6 +35,13 @@ export interface WhatsAppBotDeps {
   trainingStore: TrainingDataStore | null;
   toolRegistry?: ToolRegistry;
   approvalManager?: ApprovalManager;
+  skillLoader?: SkillLoader;
+  memoryEngine?: import('../../services/memory/memory-engine.js').MemoryEngine;
+  strategyEngine?: import('../../services/strategies/strategy-engine.js').StrategyEngine;
+  costTracker?: import('../../services/cost-tracker.js').CostTracker;
+  responseCache?: import('../../gateway/response-cache.js').ResponseCache;
+  pipelineHooks?: import('../../services/pipeline-hooks.js').PipelineHooks;
+  personaManager?: import('../../services/persona-manager.js').PersonaManager;
 }
 
 const API_BASE = 'https://graph.facebook.com/v21.0';
@@ -158,6 +167,11 @@ export class WhatsAppBot {
         await this.sendTextMessage(from, stripMarkdown(chunk));
       }
     }
+
+    // Send generated images
+    if (result.generatedImages && result.generatedImages.length > 0) {
+      await this.sendGeneratedImages(from, result.generatedImages);
+    }
   }
 
   private async handleImageMessage(
@@ -255,6 +269,74 @@ export class WhatsAppBot {
         );
       } else {
         throw err;
+      }
+    }
+  }
+
+  // -----------------------------------------------------------------------
+  // Image sending
+  // -----------------------------------------------------------------------
+
+  private async sendImageByUrl(to: string, url: string, caption?: string): Promise<void> {
+    await this.callApi(`${this.botConfig.phoneNumberId}/messages`, {
+      messaging_product: 'whatsapp',
+      recipient_type: 'individual',
+      to,
+      type: 'image',
+      image: {
+        link: url,
+        ...(caption ? { caption } : {}),
+      },
+    });
+  }
+
+  private async sendImageBuffer(to: string, buffer: Buffer, caption?: string): Promise<void> {
+    // Upload media first
+    const formData = new FormData();
+    formData.set('messaging_product', 'whatsapp');
+    formData.set('type', 'image/png');
+    formData.set('file', new Blob([buffer], { type: 'image/png' }), 'image.png');
+
+    const uploadRes = await fetch(
+      `${API_BASE}/${this.botConfig.phoneNumberId}/media`,
+      {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${this.botConfig.accessToken}` },
+        body: formData,
+        signal: AbortSignal.timeout(30_000),
+      },
+    );
+
+    if (!uploadRes.ok) {
+      throw new Error(`WhatsApp media upload failed: ${uploadRes.status}`);
+    }
+
+    const uploadData = (await uploadRes.json()) as { id?: string };
+    if (!uploadData.id) throw new Error('No media ID returned from upload');
+
+    await this.callApi(`${this.botConfig.phoneNumberId}/messages`, {
+      messaging_product: 'whatsapp',
+      recipient_type: 'individual',
+      to,
+      type: 'image',
+      image: {
+        id: uploadData.id,
+        ...(caption ? { caption } : {}),
+      },
+    });
+  }
+
+  private async sendGeneratedImages(to: string, images: GeneratedImage[]): Promise<void> {
+    for (const img of images) {
+      try {
+        if (img.type === 'url') {
+          await this.sendImageByUrl(to, img.data);
+        } else {
+          const buffer = Buffer.from(img.data, 'base64');
+          await this.sendImageBuffer(to, buffer);
+        }
+      } catch {
+        // Image delivery is best-effort
       }
     }
   }

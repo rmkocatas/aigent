@@ -419,6 +419,10 @@ function generateEnvFile(
     lines.push('# HF_TOKEN=');
   }
 
+  lines.push('');
+  lines.push('# Image generation — Local Stable Diffusion WebUI (run with --api flag)');
+  lines.push('# SD_API_URL=http://127.0.0.1:7860');
+
   lines.push(
     '',
     `OPENCLAW_INSTALL_DIR=${config.deployment.installDir}`,

@@ -55,6 +55,10 @@ export const newsHeadlinesDefinition: ToolDefinition = {
       max_items: { type: 'number', description: 'Maximum headlines to return (1-15, default 5).' },
     },
   },
+  routing: {
+    useWhen: ['User asks for latest news or headlines', 'User wants to know what is happening in the world'],
+    avoidWhen: ['User is asking about a specific past event (use web_search instead)'],
+  },
 };
 
 export const newsHeadlinesHandler: ToolHandler = async (input) => {

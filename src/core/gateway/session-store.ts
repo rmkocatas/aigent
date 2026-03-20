@@ -1,7 +1,7 @@
 import { randomUUID } from 'node:crypto';
 import { readFile, writeFile, unlink, mkdir } from 'node:fs/promises';
 import { join } from 'node:path';
-import type { Conversation, ChatMessage } from '../../types/index.js';
+import type { Conversation, ChatMessage, CompactionSummary } from '../../types/index.js';
 
 function sanitizeConversationId(id: string): string {
   return id.replace(/[^a-zA-Z0-9_-]/g, '_').slice(0, 128);
@@ -14,6 +14,7 @@ export class SessionStore {
   private readonly persistDir: string | null;
   private cleanupInterval: ReturnType<typeof setInterval> | null = null;
   private dirReady = false;
+  private resolveIdFn: ((id: string) => string) | null = null;
 
   constructor(
     idleTimeoutMinutes = 30,
@@ -23,6 +24,15 @@ export class SessionStore {
     this.idleTimeoutMs = idleTimeoutMinutes * 60 * 1000;
     this.maxConcurrent = maxConcurrent;
     this.persistDir = persistDir ?? null;
+  }
+
+  /** Set an ID resolver (e.g. from ChannelLinker) for cross-channel session aliasing. */
+  setResolveId(fn: (id: string) => string): void {
+    this.resolveIdFn = fn;
+  }
+
+  private resolve(id: string): string {
+    return this.resolveIdFn ? this.resolveIdFn(id) : id;
   }
 
   start(): void {
@@ -38,21 +48,23 @@ export class SessionStore {
   }
 
   async getOrCreate(conversationId?: string): Promise<Conversation> {
-    if (conversationId && this.conversations.has(conversationId)) {
-      const conv = this.conversations.get(conversationId)!;
+    const resolved = conversationId ? this.resolve(conversationId) : undefined;
+
+    if (resolved && this.conversations.has(resolved)) {
+      const conv = this.conversations.get(resolved)!;
       conv.lastActivity = new Date().toISOString();
       return conv;
     }
 
     // Try loading from disk
-    if (conversationId && this.persistDir) {
-      const loaded = await this.loadFromDisk(conversationId);
+    if (resolved && this.persistDir) {
+      const loaded = await this.loadFromDisk(resolved);
       if (loaded) {
         if (this.conversations.size >= this.maxConcurrent) {
           this.evictOldest();
         }
         loaded.lastActivity = new Date().toISOString();
-        this.conversations.set(conversationId, loaded);
+        this.conversations.set(resolved, loaded);
         return loaded;
       }
     }
@@ -61,7 +73,7 @@ export class SessionStore {
       this.evictOldest();
     }
 
-    const id = conversationId ?? randomUUID();
+    const id = resolved ?? randomUUID();
     const conv: Conversation = {
       id,
       messages: [],
@@ -74,7 +86,8 @@ export class SessionStore {
   }
 
   addMessage(conversationId: string, message: ChatMessage): void {
-    const conv = this.conversations.get(conversationId);
+    const resolved = this.resolve(conversationId);
+    const conv = this.conversations.get(resolved);
     if (conv) {
       conv.messages.push(message);
       conv.lastActivity = new Date().toISOString();
@@ -82,21 +95,33 @@ export class SessionStore {
     }
   }
 
+  setCompactionSummary(conversationId: string, summary: CompactionSummary): void {
+    const resolved = this.resolve(conversationId);
+    const conv = this.conversations.get(resolved);
+    if (conv) {
+      conv.compactionSummary = summary;
+      this.saveToDisk(conv).catch(() => {});
+    }
+  }
+
   getConversation(id: string): Conversation | undefined {
-    return this.conversations.get(id);
+    return this.conversations.get(this.resolve(id));
   }
 
   reset(conversationId: string): boolean {
-    const conv = this.conversations.get(conversationId);
+    const resolved = this.resolve(conversationId);
+    const conv = this.conversations.get(resolved);
     if (conv) {
       conv.messages = [];
+      conv.compactionSummary = undefined;
+      conv.provider = undefined; // Clear stale model metadata (v2026.3.11)
       conv.lastActivity = new Date().toISOString();
       this.saveToDisk(conv).catch(() => {});
       return true;
     }
     // Also delete from disk if not in memory
     if (this.persistDir) {
-      this.deleteFromDisk(conversationId).catch(() => {});
+      this.deleteFromDisk(resolved).catch(() => {});
     }
     return false;
   }
@@ -146,6 +171,7 @@ export class SessionStore {
       messages: conv.messages,
       createdAt: conv.createdAt,
       lastActivity: conv.lastActivity,
+      ...(conv.compactionSummary ? { compactionSummary: conv.compactionSummary } : {}),
     });
     await writeFile(this.filePath(conv.id), data, 'utf-8');
   }

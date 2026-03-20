@@ -12,7 +12,9 @@ const LlmProviderEnum = z.enum(['anthropic', 'openai', 'gemini', 'openrouter', '
 export const OllamaConfigSchema = z.object({
   baseUrl: z.string().url().default('http://localhost:11434'),
   model: z.string(),
+  fastModel: z.string().optional(),
   keepAlive: z.string().optional(),
+  numCtx: z.number().int().min(256).max(131072).optional(),
 });
 
 export const ModelRoutingConfigSchema = z.object({

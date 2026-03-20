@@ -85,6 +85,10 @@ export const unitConverterDefinition: ToolDefinition = {
     },
     required: ['value', 'from_unit', 'to_unit'],
   },
+  routing: {
+    useWhen: ['User asks to convert between units (length, weight, temperature, etc.)'],
+    avoidWhen: ['User wants timezone conversion (use timezone_converter instead)', 'User wants color conversion (use color_converter instead)'],
+  },
 };
 
 export const unitConverterHandler: ToolHandler = async (input) => {

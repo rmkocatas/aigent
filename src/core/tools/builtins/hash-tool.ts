@@ -24,6 +24,10 @@ export const hashToolDefinition: ToolDefinition = {
     },
     required: ['input', 'algorithm'],
   },
+  routing: {
+    useWhen: ['User asks to hash a string or compute a checksum (MD5, SHA-256, etc.)'],
+    avoidWhen: ['User is asking about hashing concepts, not computing an actual hash'],
+  },
 };
 
 export const hashToolHandler: ToolHandler = async (input) => {
